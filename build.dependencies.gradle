@@ -21,7 +21,9 @@ dependencies {
     implementation 'com.pedropathing:tuning:1.0.1'
     implementation 'com.pedropathing.ivy:pedro:1.1.1'
     implementation 'com.acmerobotics.dashboard:dashboard:0.6.0'
-    implementation 'com.bylazar:fullpanels:1.0.18'
+    implementation('com.bylazar:fullpanels:1.0.18') {
+        exclude group: 'com.bylazar', module: 'limelightproxy'
+    }
     implementation 'org.ftclib.ftclib:core:2.1.1'
     implementation 'dev.nextftc.v2:control:0.2.1'
     implementation 'dev.nextftc.v2:hardware:0.2.1'

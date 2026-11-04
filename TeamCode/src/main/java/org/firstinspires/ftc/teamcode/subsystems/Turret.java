@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.subsystems;
 
+import com.pedropathing.ivy.Command;
+
 import org.firstinspires.ftc.teamcode.util.Constants;
 import org.firstinspires.ftc.teamcode.util.ShotCalculator;
 import org.firstinspires.ftc.teamcode.util.Utilities;
@@ -10,14 +12,21 @@ import dev.nextftc.robot.Mechanism;
 import dev.nextftc.robot.Telemetry;
 
 public class Turret implements Mechanism {
-    NextServo turretServo1 = new NextServo(RobotController.controlHub(), Constants.Turret.turretServoPort1, Constants.Turret.servoCacheTolerance);
-    NextServo turretServo2 = new NextServo(RobotController.controlHub(), Constants.Turret.turretServoPort2, Constants.Turret.servoCacheTolerance);
+    private State state = State.TRACKING;
+    public enum State {
+        TRACKING,
+        LOCKED
+    }
+
+    NextServo turretServo1;
+    NextServo turretServo2;
 
     private double angle = 0;
 
-    public Turret() {
-        turretServo1.setDirection(Constants.Turret.turretServoDirection1);
-        turretServo2.setDirection(Constants.Turret.turretServoDirection2);
+    public void initialize() {
+        turretServo1 = new NextServo(RobotController.controlHub(), Constants.Turret.turretServoPort1, Constants.Turret.servoCacheTolerance, Constants.Turret.turretServoDirection1);
+        turretServo2 = new NextServo(RobotController.controlHub(), Constants.Turret.turretServoPort2, Constants.Turret.servoCacheTolerance, Constants.Turret.turretServoDirection2);
+        updateTurret(0);
     }
 
     public static double toPosition(double angleRadians) {
@@ -33,11 +42,31 @@ public class Turret implements Mechanism {
         turretServo2.setPosition(position);
     }
 
+    public Command set(State state) {
+        return instant(() -> this.state = state);
+    }
+
+    public Command toggleLock() {
+        return instant(() -> state = state == State.TRACKING ? State.LOCKED : State.TRACKING);
+    }
+
+    public State getState() {
+        return state;
+    }
+
     @Override
     public void periodic() {
-        updateTurret(ShotCalculator.turretAngle);
+        if (turretServo1 == null) return;
+        switch (state) {
+            case TRACKING:
+                updateTurret(ShotCalculator.turretAngle);
+                break;
+            case LOCKED:
+                updateTurret(0);
+                break;
+        }
+        Telemetry.log("turret", state);
         Telemetry.log("turret angle (deg)", Math.toDegrees(angle));
-        Telemetry.log("turret position", toPosition(angle));
         Telemetry.log("goal distance", ShotCalculator.distance);
     }
 }

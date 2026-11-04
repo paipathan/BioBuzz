@@ -14,6 +14,7 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.ShotCalculator;
 
 import dev.nextftc.hardware.RobotController;
 import dev.nextftc.robot.Mechanism;
@@ -39,7 +40,7 @@ public class Drivetrain implements Mechanism {
     public Command drive(Gamepad gamepad, Alliance alliance) {
         return infinite(() -> {
             DrivePowers input = new DrivePowers(-gamepad.left_stick_y * speed, -gamepad.left_stick_x * speed, -gamepad.right_stick_x * speed);
-            ManualDrive.driveOrHold(follower, ManualDrive.fieldCentric(input, follower.pose().heading(), alliance.fieldCentricOffset + headingOffset));
+            follower.manual(ManualDrive.fieldCentric(input, follower.pose().heading(), alliance.fieldCentricOffset + headingOffset));
         });
     }
 
@@ -83,6 +84,16 @@ public class Drivetrain implements Mechanism {
         field.moveCursor(pose.x(), pose.y());
         field.circle(9);
         field.line(pose.x() + 9 * Math.cos(pose.heading()), pose.y() + 9 * Math.sin(pose.heading()));
+
+        Pose goal = ShotCalculator.goalPose;
+        if (goal != null) {
+            Telemetry.log("goal x", goal.x());
+            Telemetry.log("goal y", goal.y());
+            field.setStyle("transparent", "#FF9800", 1.5);
+            field.moveCursor(goal.x(), goal.y());
+            field.circle(3);
+        }
+
         field.update();
     }
 }

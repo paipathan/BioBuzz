@@ -58,10 +58,10 @@ public class Constants {
         public static final PinpointConfig pinpointConfig = new PinpointConfig(c -> {
             c.name.set("pinpoint");
             c.podType.set(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
-            c.xPodOffset.set(3.489964702936608);
-            c.yPodOffset.set(-4.930589931217705);
-            c.xPodDirection.set(GoBildaPinpointDriver.EncoderDirection.FORWARD);
-            c.yPodDirection.set(GoBildaPinpointDriver.EncoderDirection.FORWARD);
+            c.xPodOffset.set(-3.489964702936608);
+            c.yPodOffset.set(4.930589931217705);
+            c.xPodDirection.set(GoBildaPinpointDriver.EncoderDirection.REVERSED);
+            c.yPodDirection.set(GoBildaPinpointDriver.EncoderDirection.REVERSED);
             c.globalDistanceUnit.set(DistanceUnit.INCH);
             c.offsetUnits.set(DistanceUnit.INCH);
         });
@@ -95,6 +95,22 @@ public class Constants {
         public static final String intakeMotorName = "intake";
     }
 
+    public static class Transfer {
+        public static final int transferMotorPort1 = 3; // expansion hub
+        public static final int transferMotorPort2 = 1; // control hub
+        public static final NextMotor.Direction transferMotorDirection1 = NextMotor.Direction.REVERSE;
+        public static final NextMotor.Direction transferMotorDirection2 = NextMotor.Direction.FORWARD;
+    }
+
+    public static class FlowerBar {
+        public static final int servoPort = 0;
+        public static final NextMotor.Direction servoDirection = NextMotor.Direction.FORWARD;
+        public static final double servoCacheTolerance = 0.001;
+
+        public static final double upPosition = 0.1;
+        public static final double downPosition = 0.655;
+    }
+
     public static class Turret {
         public static final int turretServoPort1 = 1;
         public static final int turretServoPort2 = 2;
@@ -102,12 +118,39 @@ public class Constants {
         public static final NextMotor.Direction turretServoDirection2 = NextMotor.Direction.FORWARD;
         public static final double servoCacheTolerance = 0.001;
 
-        public static final double rangeDegrees = 355;
+        public static final double servoRangeDegrees = 355;
+        public static final double servoToTurretRatio = 1.35;
+        public static final double rangeDegrees = servoRangeDegrees * servoToTurretRatio;
         public static final Pose turretOffset = new Pose(0, 0);
     }
 
+    public static class Shooter {
+        public static final int shooterMotorPort = 0;
+        public static final NextMotor.Direction shooterMotorDirection = NextMotor.Direction.REVERSE;
+        public static final double ticksPerRev = 28.0;
+        public static final double revRpm = 4000.0;
+        public static final double rpmTolerance = 50.0;
+
+        public static final double kS = 0.05;
+        public static final double kV = 0.00018;
+        public static final double kA = 0.0;
+
+        public static final double kP = 0.0005;
+        public static final double kI = 0.0;
+        public static final double kD = 0.0;
+    }
+
+    public static class Auto {
+        public static final Alliance drawnAlliance = Alliance.RED;
+        public static final double fieldSize = 144;
+    }
+
     public static class ShotCalculator {
-        public static final Pose blueGoal = new Pose(84, 54);
-        public static final Pose redGoal = new Pose(84, 54);
+        public static final double goalSplitY = 72;
+
+        public static final Pose blueGoalLow = new Pose(85.4, 55.5);
+        public static final Pose blueGoalHigh = new Pose(85.4, 82.6);
+        public static final Pose redGoalLow = new Pose(59.0, 60.8);
+        public static final Pose redGoalHigh = new Pose(59.0, 87.9);
     }
 }

@@ -15,7 +15,7 @@ public class ShotCalculator {
     }
 
     public static void update(Pose robot, Alliance alliance) {
-        goalPose = alliance == Alliance.RED ? Constants.ShotCalculator.redGoal : Constants.ShotCalculator.blueGoal;
+        goalPose = goalFor(robot, alliance);
 
         Pose turret = turretPosition(robot);
         double dx = goalPose.x() - turret.x();
@@ -23,6 +23,14 @@ public class ShotCalculator {
 
         turretAngle = Angle.normalizeSigned(Math.atan2(dy, dx) - robot.heading());
         distance = Math.hypot(dx, dy);
+    }
+
+    public static Pose goalFor(Pose robot, Alliance alliance) {
+        boolean low = robot.y() < Constants.ShotCalculator.goalSplitY;
+        if (alliance == Alliance.RED) {
+            return low ? Constants.ShotCalculator.redGoalLow : Constants.ShotCalculator.redGoalHigh;
+        }
+        return low ? Constants.ShotCalculator.blueGoalLow : Constants.ShotCalculator.blueGoalHigh;
     }
 
     public static Pose turretPosition(Pose robot) {

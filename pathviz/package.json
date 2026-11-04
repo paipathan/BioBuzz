@@ -1,0 +1,6 @@
+{
+  "name": "pathviz",
+  "private": true,
+  "description": "Local path editor for the BioBuzz autos",
+  "scripts": { "start": "node server.js" }
+}

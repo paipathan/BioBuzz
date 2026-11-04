@@ -11,7 +11,8 @@ public class Intake implements Mechanism {
     private State state = State.OFF;
     public enum State {
         OFF,
-        INTAKE
+        INTAKE,
+        UNJAM
     }
 
     NextMotor intakeMotor = new NextMotor(Constants.Intake.intakeMotorName);
@@ -37,6 +38,9 @@ public class Intake implements Mechanism {
                 break;
             case INTAKE:
                 intakeMotor.setThrottle(1.0);
+                break;
+            case UNJAM:
+                intakeMotor.setThrottle(-1.0);
                 break;
         }
     }

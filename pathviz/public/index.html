@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Path Editor</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><strong>Path Editor</strong><span class="muted" id="dir"></span></div>
+    <div class="tools">
+      <label class="check"><input type="checkbox" id="ghost"> Show blue side</label>
+      <label class="robot">Robot
+        <input id="robotW" type="number" min="1" step="0.5" aria-label="Robot width in inches">
+        &times;
+        <input id="robotL" type="number" min="1" step="0.5" aria-label="Robot length in inches">
+        in
+      </label>
+      <button id="undo" type="button">Undo</button>
+      <button id="redo" type="button">Redo</button>
+      <span id="status" class="status" role="status"></span>
+    </div>
+  </header>
+  <main>
+    <aside id="sidebar" aria-label="Files, paths and points"></aside>
+    <section id="stage">
+      <div id="fieldwrap">
+        <div id="banner" hidden></div>
+        <svg id="field" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="readout" class="muted"></div>
+        <div id="hint" class="muted"></div>
+      </div>
+      <div id="player">
+        <button id="play" type="button" disabled>Play</button>
+        <input id="scrub" type="range" min="0" max="1000" value="0" step="1" aria-label="Playback position" disabled>
+        <span id="time" class="muted"></span>
+        <span id="pstate" class="muted"></span>
+        <select id="rate" aria-label="Playback speed">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+        </select>
+        <select id="seq" aria-label="Auto to play"></select>
+      </div>
+    </section>
+    <aside id="inspector" aria-label="Inspector"></aside>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
