@@ -37,6 +37,7 @@ public class Turret implements Mechanism {
 
     public void updateTurret(double angleRadians) {
         angle = angleRadians;
+        if (turretServo1 == null) return;
         double position = toPosition(angleRadians);
         turretServo1.setPosition(position);
         turretServo2.setPosition(position);

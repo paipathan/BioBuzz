@@ -8,16 +8,26 @@ import dev.nextftc.hardware.actuators.NextMotor;
 import dev.nextftc.robot.Mechanism;
 
 public class Intake implements Mechanism {
-    private State state = State.OFF;
     public enum State {
-        OFF,
-        INTAKE,
-        UNJAM
+        OFF(0.0),
+        INTAKE(1.0),
+        UNJAM(-1.0);
+
+        private final double power;
+
+        State(double power) {
+            this.power = power;
+        }
     }
 
-    NextMotor intakeMotor = new NextMotor(Constants.Intake.intakeMotorName);
+    private State state = State.OFF;
 
-    public Intake() {
+    NextMotor intakeMotor;
+
+    public void initialize() {
+        if (intakeMotor == null) {
+            intakeMotor = new NextMotor(Constants.Intake.intakeMotorName);
+        }
         intakeMotor.setDirection(NextMotor.Direction.FORWARD);
         intakeMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.FLOAT);
     }
@@ -32,16 +42,7 @@ public class Intake implements Mechanism {
 
     @Override
     public void periodic() {
-        switch (state) {
-            case OFF:
-                intakeMotor.setThrottle(0.0);
-                break;
-            case INTAKE:
-                intakeMotor.setThrottle(1.0);
-                break;
-            case UNJAM:
-                intakeMotor.setThrottle(-1.0);
-                break;
-        }
+        if (intakeMotor == null) return;
+        intakeMotor.setThrottle(state.power);
     }
 }

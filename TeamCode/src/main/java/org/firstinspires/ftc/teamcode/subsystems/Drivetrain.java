@@ -21,7 +21,10 @@ import dev.nextftc.robot.Mechanism;
 import dev.nextftc.robot.Telemetry;
 
 public class Drivetrain implements Mechanism {
+    private static final long FIELD_DRAW_INTERVAL_NANOS = 100_000_000L; // 10 Hz
+
     private Follower follower;
+    private long lastFieldDraw;
 
     private double headingOffset = 0;
     private double speed = 1.0;
@@ -78,6 +81,16 @@ public class Drivetrain implements Mechanism {
         Telemetry.log("y", pose.y());
         Telemetry.log("heading (deg)", Math.toDegrees(pose.heading()));
 
+        Pose goal = ShotCalculator.goalPose;
+        if (goal != null) {
+            Telemetry.log("goal x", goal.x());
+            Telemetry.log("goal y", goal.y());
+        }
+
+        long now = System.nanoTime();
+        if (now - lastFieldDraw < FIELD_DRAW_INTERVAL_NANOS) return;
+        lastFieldDraw = now;
+
         FieldManager field = PanelsField.INSTANCE.getField();
         field.setOffsets(PanelsField.INSTANCE.getPresets().getPEDRO_PATHING());
         field.setStyle("transparent", "#3F51B5", 1.5);
@@ -85,10 +98,7 @@ public class Drivetrain implements Mechanism {
         field.circle(9);
         field.line(pose.x() + 9 * Math.cos(pose.heading()), pose.y() + 9 * Math.sin(pose.heading()));
 
-        Pose goal = ShotCalculator.goalPose;
         if (goal != null) {
-            Telemetry.log("goal x", goal.x());
-            Telemetry.log("goal y", goal.y());
             field.setStyle("transparent", "#FF9800", 1.5);
             field.moveCursor(goal.x(), goal.y());
             field.circle(3);

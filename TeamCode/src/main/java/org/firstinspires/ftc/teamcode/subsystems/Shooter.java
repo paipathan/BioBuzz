@@ -6,21 +6,34 @@ import static dev.nextftc.units.Units.RotationsPerMinute;
 import com.pedropathing.ivy.Command;
 
 import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.ShotCalculator;
 import org.firstinspires.ftc.teamcode.util.Utilities;
 
 import dev.nextftc.hardware.RobotController;
 import dev.nextftc.hardware.actuators.NextMotor;
-import dev.nextftc.hardware.actuators.NextServo;
 import dev.nextftc.robot.Mechanism;
 import dev.nextftc.robot.Telemetry;
 
 public class Shooter implements Mechanism {
-    private State state = State.IDLE;
+    public static final int SPIN_UP_TIMEOUT_MS = 750;
+    private static final double RPM_TOLERANCE = 50.0;
+
+
     public enum State {
-        IDLE,
-        REV,
-        UNJAM
+        IDLE(false, 0.0),
+        REV(true, 0.0),
+        UNJAM(false, -1.0);
+
+        private final boolean holdsSpeed;
+        private final double power;
+
+        State(boolean holdsSpeed, double power) {
+            this.holdsSpeed = holdsSpeed;
+            this.power = power;
+        }
     }
+
+    private State state = State.IDLE;
 
     NextMotor shooterMotor;
 
@@ -43,31 +56,27 @@ public class Shooter implements Mechanism {
         return state;
     }
 
-    private double targetRpm() {
-        return state == State.REV ? 4000.0 : 0.0;
-    }
-
     public double getRpm() {
+        if (shooterMotor == null) return 0.0;
         return shooterMotor.getEncoderVelocity().into(RotationsPerMinute);
     }
 
+    public double targetRpm() {
+        return state.holdsSpeed ? ShotCalculator.shooterRpm : 0.0;
+    }
+
     public boolean atSpeed() {
-        return Utilities.inTolerance(getRpm(), targetRpm(), 50.0);
+        if (shooterMotor == null) return true; // not installed: don't stall the feed waiting on spin-up
+        return Utilities.inTolerance(getRpm(), targetRpm(), RPM_TOLERANCE);
     }
 
     @Override
     public void periodic() {
         if (shooterMotor == null) return;
-        switch (state) {
-            case IDLE:
-                shooterMotor.setThrottle(0.0);
-                break;
-            case REV:
-                shooterMotor.setVelocitySetpoint(RotationsPerMinute.of(targetRpm()));
-                break;
-            case UNJAM:
-                shooterMotor.setThrottle(-1.0);
-                break;
+        if (state.holdsSpeed) {
+            shooterMotor.setVelocitySetpoint(RotationsPerMinute.of(targetRpm()));
+        } else {
+            shooterMotor.setThrottle(state.power);
         }
         Telemetry.log("shooter", state);
         Telemetry.log("shooter rpm", getRpm());

@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode;
 
 import androidx.annotation.NonNull;
 
+import com.pedropathing.follower.Follower;
 import com.pedropathing.ivy.Command;
 import com.pedropathing.ivy.commands.Commands;
 import com.pedropathing.ivy.groups.Groups;
@@ -17,6 +18,7 @@ import org.firstinspires.ftc.teamcode.subsystems.Transfer;
 import org.firstinspires.ftc.teamcode.subsystems.Turret;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.ShotCalculator;
 
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -44,12 +46,15 @@ public class Robot implements NextRobot {
     public final FlowerBar flowerBar = new FlowerBar();
 
     private State state = State.IDLE;
+    private Alliance alliance = Alliance.RED;
 
-    public void initialize(Pose startPose) {
+    public void initialize(Pose startPose, Alliance alliance) {
+        this.alliance = alliance;
         Telemetry.addBackend(PanelsTelemetry.INSTANCE.getFtcTelemetry());
         drivetrain.initialize(startPose);
-        turret.initialize();
-        shooter.initialize();
+        intake.initialize();
+        if (Constants.Turret.enabled) turret.initialize();
+        if (Constants.Shooter.enabled) shooter.initialize();
         transfer.initialize();
         flowerBar.initialize();
     }
@@ -64,22 +69,22 @@ public class Robot implements NextRobot {
                         transfer.set(Transfer.State.OFF));
             case INTAKE:
                 return Groups.sequential(
-                        turret.set(Turret.State.TRACKING),
+                        turret.set(Turret.State.LOCKED),
                         intake.set(Intake.State.INTAKE),
                         shooter.set(Shooter.State.IDLE),
-                        transfer.set(Transfer.State.RUNNING));
+                        transfer.set(Transfer.State.LOAD));
             case SHOOT:
                 return Groups.sequential(
-                        turret.set(Turret.State.TRACKING),
+                        turret.set(Turret.State.LOCKED),
                         intake.set(Intake.State.OFF),
                         transfer.set(Transfer.State.OFF),
                         shooter.set(Shooter.State.REV),
-                        Commands.waitUntil(shooter::atSpeed).raceWith(Commands.waitMs(750)),
+                        Commands.waitUntil(shooter::atSpeed).raceWith(Commands.waitMs(Shooter.SPIN_UP_TIMEOUT_MS)),
                         intake.set(Intake.State.INTAKE),
-                        transfer.set(Transfer.State.RUNNING));
+                        transfer.set(Transfer.State.FEED));
             case UNJAM:
                 return Groups.sequential(
-                        turret.set(Turret.State.TRACKING),
+                        turret.set(Turret.State.LOCKED),
                         intake.set(Intake.State.UNJAM),
                         shooter.set(Shooter.State.UNJAM),
                         transfer.set(Transfer.State.UNJAM));
@@ -88,7 +93,7 @@ public class Robot implements NextRobot {
         }
     }
 
-    public void configureBindings(Gamepad gamepad, Alliance alliance) {
+    public void configureBindings(Gamepad gamepad) {
         CommandGamepad controller = new CommandGamepad(gamepad);
 
         controller.leftBumper()
@@ -123,7 +128,19 @@ public class Robot implements NextRobot {
     }
 
     @Override
-    public void periodic() {}
+    public void periodic() {
+        updateShot();
+    }
+
+    public void disabledPeriodic() {
+        updateShot();
+        drivetrain.periodic();
+    }
+
+    private void updateShot() {
+        Follower follower = drivetrain.getFollower();
+        if (follower != null) ShotCalculator.update(follower, alliance);
+    }
 
     @NonNull
     @Override

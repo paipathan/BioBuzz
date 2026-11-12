@@ -10,11 +10,18 @@ import dev.nextftc.robot.Mechanism;
 import dev.nextftc.robot.Telemetry;
 
 public class FlowerBar implements Mechanism {
-    private State state = State.UP;
     public enum State {
-        UP,
-        DOWN
+        UP(0.0),
+        DOWN(0.655);
+
+        private final double position;
+
+        State(double position) {
+            this.position = position;
+        }
     }
+
+    private State state = State.UP;
 
     NextServo flowerBarServo;
 
@@ -37,14 +44,7 @@ public class FlowerBar implements Mechanism {
     @Override
     public void periodic() {
         if (flowerBarServo == null) return;
-        switch (state) {
-            case UP:
-                flowerBarServo.setPosition(Constants.FlowerBar.upPosition);
-                break;
-            case DOWN:
-                flowerBarServo.setPosition(Constants.FlowerBar.downPosition);
-                break;
-        }
+        flowerBarServo.setPosition(state.position);
         Telemetry.log("flower bar", state);
     }
 }

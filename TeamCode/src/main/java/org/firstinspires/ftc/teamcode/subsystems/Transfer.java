@@ -6,19 +6,31 @@ import org.firstinspires.ftc.teamcode.util.Constants;
 
 import dev.nextftc.hardware.RobotController;
 import dev.nextftc.hardware.actuators.NextMotor;
+import dev.nextftc.hardware.actuators.NextServo;
 import dev.nextftc.robot.Mechanism;
 import dev.nextftc.robot.Telemetry;
 
 public class Transfer implements Mechanism {
-    private State state = State.OFF;
     public enum State {
-        OFF,
-        RUNNING,
-        UNJAM
+        OFF(0.0, Constants.Transfer.stopperClosedPosition),
+        LOAD(1.0, Constants.Transfer.stopperClosedPosition),
+        FEED(1.0, Constants.Transfer.stopperOpenPosition),
+        UNJAM(-1.0, Constants.Transfer.stopperClosedPosition);
+
+        private final double power;
+        private final double stopperPosition;
+
+        State(double power, double stopperPosition) {
+            this.power = power;
+            this.stopperPosition = stopperPosition;
+        }
     }
+
+    private State state = State.OFF;
 
     NextMotor transferMotor1;
     NextMotor transferMotor2;
+    NextServo stopperServo;
 
     public void initialize() {
         if (transferMotor1 == null) {
@@ -29,6 +41,9 @@ public class Transfer implements Mechanism {
         transferMotor2.setDirection(Constants.Transfer.transferMotorDirection2);
         transferMotor1.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
         transferMotor2.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
+        if (stopperServo == null) {
+            stopperServo = new NextServo(RobotController.expansionHub(), Constants.Transfer.stopperServoPort, Constants.Transfer.stopperServoCacheTolerance, Constants.Transfer.stopperServoDirection);
+        }
     }
 
     public Command set(State state) {
@@ -39,25 +54,12 @@ public class Transfer implements Mechanism {
         return state;
     }
 
-    private void setThrottle(double throttle) {
-        transferMotor1.setThrottle(throttle);
-        transferMotor2.setThrottle(throttle);
-    }
-
     @Override
     public void periodic() {
         if (transferMotor1 == null) return;
-        switch (state) {
-            case OFF:
-                setThrottle(0.0);
-                break;
-            case RUNNING:
-                setThrottle(1.0);
-                break;
-            case UNJAM:
-                setThrottle(-1.0);
-                break;
-        }
+        transferMotor1.setThrottle(state.power);
+        transferMotor2.setThrottle(state.power);
+        if (stopperServo != null) stopperServo.setPosition(state.stopperPosition);
         Telemetry.log("transfer", state);
     }
 }

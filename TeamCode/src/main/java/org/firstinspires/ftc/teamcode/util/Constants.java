@@ -96,22 +96,27 @@ public class Constants {
     }
 
     public static class Transfer {
-        public static final int transferMotorPort1 = 3; // expansion hub
-        public static final int transferMotorPort2 = 1; // control hub
-        public static final NextMotor.Direction transferMotorDirection1 = NextMotor.Direction.REVERSE;
-        public static final NextMotor.Direction transferMotorDirection2 = NextMotor.Direction.FORWARD;
+        public static final int transferMotorPort1 = 3;
+        public static final int transferMotorPort2 = 1;
+        public static final NextMotor.Direction transferMotorDirection1 = NextMotor.Direction.FORWARD;
+        public static final NextMotor.Direction transferMotorDirection2 = NextMotor.Direction.REVERSE;
+
+        public static final int stopperServoPort = 0;
+        public static final NextMotor.Direction stopperServoDirection = NextMotor.Direction.FORWARD;
+        public static final double stopperServoCacheTolerance = 0.001;
+        public static final double stopperOpenPosition = 0.25;
+        public static final double stopperClosedPosition = 0.45;
     }
 
     public static class FlowerBar {
         public static final int servoPort = 0;
         public static final NextMotor.Direction servoDirection = NextMotor.Direction.FORWARD;
         public static final double servoCacheTolerance = 0.001;
-
-        public static final double upPosition = 0.1;
-        public static final double downPosition = 0.655;
     }
 
     public static class Turret {
+        // Off-robot / unwired: when false, the turret is never initialized and all calls no-op.
+        public static final boolean enabled = false;
         public static final int turretServoPort1 = 1;
         public static final int turretServoPort2 = 2;
         public static final NextMotor.Direction turretServoDirection1 = NextMotor.Direction.FORWARD;
@@ -125,11 +130,11 @@ public class Constants {
     }
 
     public static class Shooter {
+        // Off-robot / unwired: when false, the shooter is never initialized and all calls no-op.
+        public static final boolean enabled = false;
         public static final int shooterMotorPort = 0;
         public static final NextMotor.Direction shooterMotorDirection = NextMotor.Direction.REVERSE;
         public static final double ticksPerRev = 28.0;
-        public static final double revRpm = 4000.0;
-        public static final double rpmTolerance = 50.0;
 
         public static final double kS = 0.05;
         public static final double kV = 0.00018;
@@ -143,6 +148,10 @@ public class Constants {
     public static class Auto {
         public static final Alliance drawnAlliance = Alliance.RED;
         public static final double fieldSize = 144;
+
+        // How early (seconds of driving) a path marker fires to make up for loop and servo delay.
+        // Raise it if markers still land late, lower it if they land early.
+        public static final double eventLeadSeconds = 0.25;
     }
 
     public static class ShotCalculator {

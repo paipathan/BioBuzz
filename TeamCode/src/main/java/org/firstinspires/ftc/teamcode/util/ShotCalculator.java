@@ -6,9 +6,12 @@ import com.pedropathing.utils.Angle;
 
 public class ShotCalculator {
 
+    private static final double DEFAULT_SHOOTER_RPM = 4000.0;
+
     public static Pose goalPose;
     public static double turretAngle;
     public static double distance;
+    public static double shooterRpm = DEFAULT_SHOOTER_RPM;
 
     public static void update(Follower follower, Alliance alliance) {
         update(follower.pose(), alliance);
@@ -23,6 +26,7 @@ public class ShotCalculator {
 
         turretAngle = Angle.normalizeSigned(Math.atan2(dy, dx) - robot.heading());
         distance = Math.hypot(dx, dy);
+        shooterRpm = DEFAULT_SHOOTER_RPM;
     }
 
     public static Pose goalFor(Pose robot, Alliance alliance) {
