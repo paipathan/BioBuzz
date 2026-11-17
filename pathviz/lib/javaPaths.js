@@ -68,8 +68,35 @@ function splitArgs(s) {
   return out;
 }
 
+const TARGET_CALL = new RegExp(String.raw`^headingTarget\s*\(\s*(${NUM})\s*,\s*(${NUM})\s*\)$`);
+
+// "withHeadingTargets(alliance, <path expression>, headingTarget(0.5, 90), ...)" -> the inner
+// expression and the targets, or null when `expr` is not wrapped that way.
+function unwrapHeadings(expr, allianceVar) {
+  const m = /^\s*withHeadingTargets\s*\(/.exec(expr);
+  if (!m) return null;
+  const open = m[0].length - 1;
+  const close = matchParen(expr, open);
+  if (close < 0 || expr.slice(close + 1).trim()) return 'unbalanced parentheses';
+  const args = splitArgs(expr.slice(open + 1, close));
+  if (args.length < 3 || args[0] !== allianceVar) return `withHeadingTargets(...) must start with ${allianceVar}`;
+  const headings = [];
+  for (const a of args.slice(2)) {
+    const t = TARGET_CALL.exec(a);
+    if (!t) return 'withHeadingTargets(...) only takes headingTarget(position, degrees) after the path';
+    headings.push({ at: parseFloat(t[1]), deg: parseFloat(t[2]) });
+  }
+  return { inner: args[1], headings };
+}
+
 // "Paths.line(a, b).linear(a, b)" -> { kind, pts, heading } or an error string.
-function parseExpression(expr, pointNames) {
+function parseExpression(expr, pointNames, allianceVar = 'alliance') {
+  const wrapped = unwrapHeadings(expr, allianceVar);
+  if (typeof wrapped === 'string') return wrapped;
+  if (wrapped) {
+    const inner = parseExpression(wrapped.inner, pointNames, allianceVar);
+    return typeof inner === 'string' ? inner : { ...inner, headings: wrapped.headings };
+  }
   const head = new RegExp(`^\\s*Paths\\s*\\.\\s*(line|curve)\\s*\\(`).exec(expr);
   if (!head) return 'return value is not Paths.line(...) or Paths.curve(...)';
   let pos = head[0].length - 1;
@@ -132,6 +159,10 @@ function parse(source, { nested = false } = {}) {
     return ' ';
   });
 
+  // An Alliance field, kept only to hand the alliance to withHeadingTargets(...).
+  let allianceField = null;
+  body = body.replace(new RegExp(String.raw`(?:(?:public|private|protected)\s+)?(?:final\s+)?Alliance\s+(${IDENT})\s*;`),(_, name) => { allianceField = name; return ' '; });
+
   // Constructor
   const ctor = new RegExp(`public\\s+${className}\\s*\\(\\s*Alliance\\s+(${IDENT})\\s*\\)\\s*\\{`).exec(body);
   if (!ctor) {
@@ -144,6 +175,10 @@ function parse(source, { nested = false } = {}) {
       let ctorBody = body.slice(ctor.index + ctor[0].length, ctorEnd);
       body = body.slice(0, ctor.index) + ' ' + body.slice(ctorEnd + 1);
       let factory = null;
+      if (allianceField) {
+        ctorBody = ctorBody.replace(new RegExp(String.raw`this\s*\.\s*${allianceField}\s*=\s*${ctor[1]}\s*;`), ' ');
+        if (allianceField !== ctor[1]) issues.push('the Alliance field must be named like the constructor parameter');
+      }
       ctorBody = ctorBody.replace(
         new RegExp(`PoseFactory\\s+(${IDENT})\\s*=\\s*Utilities\\s*\\.\\s*poseFactory\\s*\\(\\s*${ctor[1]}\\s*\\)\\s*;`),
         (_, v) => { factory = v; return ' '; });
@@ -176,7 +211,7 @@ function parse(source, { nested = false } = {}) {
     spans.push([m.index, close + 1]);
     const ret = /^\s*return\s+([\s\S]*?)\s*;\s*$/.exec(body.slice(open + 1, close));
     if (!ret) { issues.push(`${m[1]}() is more than a single return statement`); continue; }
-    const parsed = parseExpression(ret[1], names);
+    const parsed = parseExpression(ret[1], names, allianceField || 'alliance');
     if (typeof parsed === 'string') { issues.push(`${m[1]}(): ${parsed}`); continue; }
     paths.push({ name: m[1], ...parsed });
     methodRe.lastIndex = close + 1;
@@ -201,21 +236,33 @@ function headingCall(path) {
   }
 }
 
+const fmt3 = (n) => String(Number(Number(n).toFixed(3)));
+const usesHeadings = (model) => model.paths.some((p) => p.headings && p.headings.length);
+
+function pathExpression(path) {
+  const kind = path.pts.length > 2 ? 'curve' : 'line';
+  const base = `Paths.${kind}(${path.pts.join(', ')})${headingCall(path)}`;
+  if (!path.headings || !path.headings.length) return base;
+  const targets = [...path.headings].sort((a, b) => a.at - b.at).map((t) => `headingTarget(${fmt3(t.at)}, ${fmt(t.deg)})`);
+  return `withHeadingTargets(alliance, ${base}, ${targets.join(', ')})`;
+}
+
 function classLines(model, indent, nested) {
   const L = [];
   const I = (n) => indent + '    '.repeat(n);
   L.push(`${indent}public ${nested ? 'static ' : ''}class ${model.className} {`, '');
   for (const p of model.points) L.push(`${I(1)}${p.vis === 'public' ? 'public' : 'private'} final Pose ${p.name};`);
+  if (usesHeadings(model)) L.push(`${I(1)}private final Alliance alliance;`);
   L.push('');
   L.push(`${I(1)}public ${model.className}(Alliance alliance) {`);
+  if (usesHeadings(model)) L.push(`${I(2)}this.alliance = alliance;`);
   L.push(`${I(2)}PoseFactory poseFactory = Utilities.poseFactory(alliance);`, '');
   for (const p of model.points) L.push(`${I(2)}${p.name} = poseFactory.of(${fmt(p.x)}, ${fmt(p.y)}, ${fmt(p.h)});`);
   L.push(`${I(1)}}`);
   for (const path of model.paths) {
     L.push('');
     L.push(`${I(1)}public Path ${path.name}() {`);
-    const kind = path.pts.length > 2 ? 'curve' : 'line';
-    L.push(`${I(2)}return Paths.${kind}(${path.pts.join(', ')})${headingCall(path)};`);
+    L.push(`${I(2)}return ${pathExpression(path)};`);
     L.push(`${I(1)}}`);
   }
   L.push(`${indent}}`);
@@ -231,10 +278,16 @@ const IMPORTS = [
   'org.firstinspires.ftc.teamcode.util.Utilities',
 ];
 
+const HEADING_IMPORTS = [
+  'static org.firstinspires.ftc.teamcode.util.PathEvents.headingTarget',
+  'static org.firstinspires.ftc.teamcode.util.PathEvents.withHeadingTargets',
+];
+
 function generate(model, pkg, eol = '\n') {
   const L = [`package ${pkg};`, ''];
   L.push(...IMPORTS.slice(0, 4).map((i) => `import ${i};`), '');
   L.push(...IMPORTS.slice(4).map((i) => `import ${i};`), '');
+  if (usesHeadings(model)) L.push(...HEADING_IMPORTS.map((i) => `import ${i};`), '');
   L.push(...classLines(model, '', false));
   L.push('');
   return L.join(eol);
@@ -242,25 +295,35 @@ function generate(model, pkg, eol = '\n') {
 
 const esc = (t) => t.replace(/\./g, '\\.');
 
+// Adds any of `wanted` ("a.b.C" or "static a.b.C.member") that the file doesn't import yet.
+function ensureImports(source, wanted, eol) {
+  const has = (src, i) => {
+    const isStatic = i.startsWith('static ');
+    const name = isStatic ? i.slice(7) : i;
+    const owner = name.replace(/\.[^.]+$/, '');
+    const kw = isStatic ? String.raw`import\s+static` : 'import';
+    return new RegExp(String.raw`^\s*${kw}\s+${esc(name)}\s*;`, 'm').test(src)
+      || new RegExp(String.raw`^\s*${kw}\s+${esc(owner)}\.\*\s*;`, 'm').test(src);
+  };
+  const missing = wanted.filter((i) => !has(source, i));
+  if (!missing.length) return source;
+  const lines = missing.map((i) => `import ${i};`).join(eol);
+  const imports = [...source.matchAll(/^import\s[^\n]*\n/gm)];
+  if (imports.length) {
+    const last = imports[imports.length - 1];
+    const at = last.index + last[0].length;
+    return source.slice(0, at) + lines + eol + source.slice(at);
+  }
+  const pkg = /^package\s[^\n]*\n/m.exec(source);
+  const at = pkg ? pkg.index + pkg[0].length : 0;
+  return source.slice(0, at) + (pkg ? eol : '') + lines + eol + source.slice(at);
+}
+
 // Rewrites only the nested paths class in `source` (and adds any imports it needs).
 function generateNested(model, source, region, eol) {
   const indent = /^[ \t]*/.exec(source.slice(region[0]))[0];
   let out = source.slice(0, region[0]) + classLines(model, indent, true).join(eol) + source.slice(region[1]);
-  const missing = IMPORTS.filter((i) => !new RegExp(`^\\s*import\\s+${esc(i)}\\s*;`, 'm').test(out)
-    && !new RegExp(`^\\s*import\\s+${esc(i.replace(/\.[^.]+$/, ''))}\\.\\*\\s*;`, 'm').test(out));
-  if (missing.length) {
-    const lines = missing.map((i) => `import ${i};`).join(eol);
-    const imports = [...out.matchAll(/^import\s[^\n]*\n/gm)];
-    if (imports.length) {
-      const last = imports[imports.length - 1];
-      const at = last.index + last[0].length;
-      out = out.slice(0, at) + lines + eol + out.slice(at);
-    } else {
-      const pkg = /^package\s[^\n]*\n/m.exec(out);
-      const at = pkg ? pkg.index + pkg[0].length : 0;
-      out = out.slice(0, at) + (pkg ? eol : '') + lines + eol + out.slice(at);
-    }
-  }
+  out = ensureImports(out, usesHeadings(model) ? [...IMPORTS, ...HEADING_IMPORTS] : IMPORTS, eol);
   return out;
 }
 
@@ -288,8 +351,15 @@ function validate(model) {
     const need = { linear: ['from', 'to'], constant: ['point'], facing: ['point'] }[h.mode];
     if (!['default', 'linear', 'constant', 'tangent', 'reverseTangent', 'facing'].includes(h.mode)) return `${path.name}: invalid heading mode`;
     if (need && need.some((k) => !pointNames.has(h[k]))) return `${path.name}: heading references an unknown point`;
+    if (path.headings !== undefined) {
+      if (!Array.isArray(path.headings)) return `${path.name}: headings must be a list`;
+      if (path.headings.length && h.mode === 'default') return `${path.name}: heading targets need a heading mode`;
+      for (const t of path.headings) {
+        if (!(Number.isFinite(t.at) && t.at > 0 && t.at < 1) || !Number.isFinite(t.deg)) return `${path.name}: invalid heading target`;
+      }
+    }
   }
   return null;
 }
 
-module.exports = { parse, generate, generateNested, validate, isIdent };
+module.exports = { parse, generate, generateNested, classLines, validate, isIdent, ensureImports, stripComments, matchBrace, splitArgs, NUM, IDENT, fmt };

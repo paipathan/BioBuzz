@@ -68,8 +68,8 @@
     mode: 'select', // or 'add'
     undo: [],
     redo: [],
-    ghost: store.get('pathviz.ghost', false),
     robot: store.get('pathviz.robot', { w: 16, l: 16 }),
+    showBar: store.get('pathviz.bar', true),
     cursor: null,
     drag: null,
     saving: false,
@@ -78,6 +78,7 @@
     newFile: { open: false, error: '' },
     offline: false,
     rev: 0,
+    selStep: null,
   };
 
   const readonly = () => !S.model || S.model.locked;
@@ -136,9 +137,10 @@
     clearTimeout(S.saveTimer);
     if (!S.saving || !S.model) return;
     const rev = S.rev;
-    const { points, paths } = S.model;
+    const { points, paths, routine } = S.model;
     try {
-      await api(`/files/${S.file}`, { method: 'PUT', body: { points, paths } });
+      // A routine the editor can't read is left alone, so it is not sent back.
+      await api(`/files/${S.file}`, { method: 'PUT', body: { points, paths, routine: routine && !routine.locked ? { steps: routine.steps, reset: !!routine.reset } : undefined } });
       setOffline(false);
       if (S.rev === rev) { S.saving = false; setStatus('Saved'); }
     } catch (e) {
@@ -162,7 +164,7 @@
 
   // ---- model edits --------------------------------------------------------
 
-  const snapshot = () => JSON.stringify({ points: S.model.points, paths: S.model.paths });
+  const snapshot = () => JSON.stringify({ points: S.model.points, paths: S.model.paths, steps: S.model.routine ? S.model.routine.steps : undefined, reset: S.model.routine ? !!S.model.routine.reset : undefined });
 
   function pushUndo() {
     S.undo.push(snapshot());
@@ -171,9 +173,11 @@
   }
 
   function restore(json) {
-    const { points, paths } = JSON.parse(json);
+    const { points, paths, steps, reset } = JSON.parse(json);
     S.model.points = points;
     S.model.paths = paths;
+    if (steps && S.model.routine) S.model.routine.steps = steps;
+    if (reset !== undefined && S.model.routine) S.model.routine.reset = reset;
     if (S.selection) {
       const list = S.selection.type === 'path' ? paths : points;
       if (!list.some((x) => x.name === S.selection.name)) S.selection = null;
@@ -239,6 +243,7 @@
       if (to === from.name) return;
       const name = uniqueName('path', m.paths.length + 1);
       m.paths.push({ name, kind: 'line', pts: [from.name, to], heading: { mode: 'linear', from: from.name, to } });
+      if (m.routine && !m.routine.locked) m.routine.steps.push({ type: 'path', path: name, events: [] });
       S.selection = { type: 'path', name };
     });
   }
@@ -257,6 +262,7 @@
   function renamePath(oldName, newName) {
     edit((m) => {
       pathNamed(oldName, m).name = newName;
+      if (m.routine) for (const st of m.routine.steps) if (st.path === oldName) st.path = newName;
       if (S.selection?.type === 'path') S.selection.name = newName;
     });
   }
@@ -273,8 +279,10 @@
       const p = pathNamed(name, m);
       const controls = p.pts.slice(1, -1);
       m.paths = m.paths.filter((x) => x !== p);
+      if (m.routine && !m.routine.locked) m.routine.steps = m.routine.steps.filter((st) => st.path !== name);
       dropOrphans(m, controls);
       S.selection = null;
+      S.selStep = null;
     });
   }
 
@@ -378,8 +386,6 @@
     return pts.length > 2 ? bezier(pts, n) : pts;
   }
 
-  const mirror = (q) => ({ x: size() - q.x, y: size() - q.y });
-
   function clientToField(e) {
     const svg = $('#field');
     const pt = svg.createSVGPoint();
@@ -389,20 +395,20 @@
     return { x: q.x, y: size() - q.y };
   }
 
-  function arrowFor(list, flip) {
-    const b = list[list.length - 1];
-    let a = list[list.length - 2];
-    for (let i = list.length - 2; i >= 0; i--) {
-      a = list[i];
-      if (Math.hypot(b.x - a.x, b.y - a.y) > 0.5) break;
-    }
-    const ang = Math.atan2(b.y - a.y, b.x - a.x);
-    const c = Math.cos(ang), sn = Math.sin(ang);
-    const tip = { x: b.x, y: b.y };
-    const base = { x: b.x - 3.4 * c, y: b.y - 3.4 * sn };
-    const l = { x: base.x - 1.6 * sn, y: base.y + 1.6 * c };
-    const r = { x: base.x + 1.6 * sn, y: base.y - 1.6 * c };
-    return [tip, l, r].map((q) => `${flip(q).x},${flipY(flip(q).y)}`).join(' ');
+  // The robot outline with its front marked: a heavy front edge and a chevron
+  // pointing the way it faces (local +x, so rotate the group by the heading).
+  // The flower bar sticks this far out of the back of the robot (inches).
+  const FLOWER_BAR_DEPTH = 3.88;
+
+  function robotShape(cls) {
+    const { w, l } = S.robot;
+    const tip = l / 2 - 1, back = Math.max(tip - Math.min(l, w) * 0.28, 0), half = Math.min(l, w) * 0.2;
+    return [
+      S.showBar && s('rect', { class: 'robot-bar', x: -l / 2 - FLOWER_BAR_DEPTH, y: -w / 2, width: FLOWER_BAR_DEPTH, height: w }),
+      s('rect', { class: cls, x: -l / 2, y: -w / 2, width: l, height: w }),
+      s('line', { class: 'robot-front', x1: l / 2, y1: -w / 2, x2: l / 2, y2: w / 2 }),
+      s('polygon', { class: 'robot-nose', points: `${tip},0 ${back},${-half} ${back},${half}` }),
+    ];
   }
 
   // ---- field rendering ----------------------------------------------------
@@ -414,12 +420,12 @@
     const n = size();
     svg.setAttribute('viewBox', `0 0 ${n} ${n}`);
     layers.image = s('image', { x: 0, y: 0, width: n, height: n, preserveAspectRatio: 'none' });
-    layers.ghost = s('g', { class: 'ghost', 'pointer-events': 'none' });
     layers.paths = s('g');
     layers.points = s('g');
+    layers.events = s('g');
     layers.robot = s('g', { 'pointer-events': 'none' });
     layers.overlay = s('g');
-    svg.append(layers.image, layers.ghost, layers.paths, layers.points, layers.robot, layers.overlay);
+    svg.append(layers.image, layers.paths, layers.points, layers.events, layers.robot, layers.overlay);
     const dark = matchMedia('(prefers-color-scheme: dark)');
     const setImage = () => layers.image.setAttribute('href', `fields/biobuzz-${dark.matches ? 'dark' : 'light'}.webp`);
     setImage();
@@ -428,24 +434,8 @@
 
   function renderField() {
     const m = S.model;
-    for (const k of ['ghost', 'paths', 'points']) layers[k].replaceChildren();
+    for (const k of ['paths', 'points', 'events']) layers[k].replaceChildren();
     if (!m) return;
-
-    if (S.ghost) {
-      for (const p of m.paths) {
-        const list = samples(m, p);
-        if (!list) continue;
-        const m2 = list.map(mirror);
-        layers.ghost.append(
-          s('polyline', { class: 'line', points: m2.map((q) => `${q.x},${flipY(q.y)}`).join(' ') }),
-          s('polygon', { class: 'arrow', points: arrowFor(list, mirror) }));
-      }
-      for (const p of m.points) {
-        if (isControl(p.name)) continue;
-        const q = mirror(p);
-        layers.ghost.append(s('circle', { class: 'dot', cx: q.x, cy: flipY(q.y), r: 1.2 }));
-      }
-    }
 
     const sel = S.selection;
     const ordered = [...m.paths].sort((a, b) => (sel?.type === 'path' && sel.name === a.name ? 1 : 0) - (sel?.type === 'path' && sel.name === b.name ? 1 : 0));
@@ -458,13 +448,13 @@
       const g = s('g', { class: `path${isSel ? ' sel' : ''}`, 'data-path': p.name },
         s('polyline', { class: 'hit', points: pts }),
         s('polyline', { class: 'line', points: pts }),
-        s('polygon', { class: 'arrow', points: arrowFor(list, (q) => q) }),
-        s('text', { class: 'label path-label', x: mid.x + 1.8, y: flipY(mid.y) - 1.8, 'text-anchor': 'start' }, document.createTextNode(p.name)));
+        // Only the selected path is named; the rest stay clean.
+        isSel && s('text', { class: 'label path-label', x: mid.x + 1.8, y: flipY(mid.y) - 1.8, 'text-anchor': 'start', 'pointer-events': 'none' }, document.createTextNode(p.name)));
       layers.paths.append(g);
     }
 
+    // The control polygon only appears while one of the path's control points is being edited.
     const hulls = new Set();
-    if (sel?.type === 'path') hulls.add(sel.name);
     if (sel?.type === 'point') roles(sel.name).filter((r) => r.interior).forEach((r) => hulls.add(r.path.name));
     for (const name of hulls) {
       const p = pathNamed(name);
@@ -473,19 +463,79 @@
       }
     }
 
+    const evStep = stepForSelection();
+    if (evStep && sel?.type === 'path') drawEvents(pathNamed(sel.name), evStep);
+    if (sel?.type === 'path') drawHeadingTargets(pathNamed(sel.name));
+
+    // Every pose keeps its dot, unlabeled (hover for the name). Control points stay hidden
+    // until one is selected, which you do from the path's inspector.
+    const shownPaths = new Set();
+    if (sel?.type === 'point') roles(sel.name).filter((r) => r.interior).forEach((r) => shownPaths.add(r.path.name));
+    const isShown = (p, ctrl) => {
+      if (sel?.type === 'point' && sel.name === p.name) return true;
+      if (ctrl) return roles(p.name).some((r) => shownPaths.has(r.path.name));
+      return true;
+    };
+
     for (const p of m.points) {
       const ctrl = isControl(p.name);
+      if (!isShown(p, ctrl)) continue;
       const isSel = sel?.type === 'point' && sel.name === p.name;
       const g = s('g', { class: `pt${ctrl ? ' control' : ''}${isSel ? ' sel' : ''}`, 'data-point': p.name, transform: `translate(${p.x},${flipY(p.y)})` });
       g.append(s('circle', { class: 'grab', r: 3.2 }));
-      if (!ctrl) g.append(s('line', { class: 'tick', x1: 0, y1: 0, x2: 5 * Math.cos(rad(p.h)), y2: -5 * Math.sin(rad(p.h)) }));
       g.append(ctrl
         ? s('rect', { class: 'dot', x: -1.2, y: -1.2, width: 2.4, height: 2.4 })
         : s('circle', { class: 'dot', r: 1.6 }));
-      g.append(s('text', { class: 'label', x: 2.8, y: -2.6 }, document.createTextNode(p.name)));
+      g.append(s('title', {}, document.createTextNode(p.name)));
       layers.points.append(g);
     }
     renderOverlay();
+  }
+
+  // Markers (diamonds) and speed zones (a heavier stretch with a cap at each end) for the
+  // selected path's routine step. The cap and diamond handles drag along the path.
+  function drawEvents(p, step) {
+    const geo = p && geometry(p);
+    if (!geo || !geo.len) return;
+    const at = (q) => `translate(${q.x},${flipY(q.y)})`;
+    step.events.forEach((e, i) => {
+      if (e.type === 'zone') {
+        const pts = slice(geo, e.from, e.to);
+        const mid = posAt(geo, (e.from + e.to) / 2);
+        layers.events.append(
+          s('polyline', { class: 'zone', points: pts.map((q) => `${q.x},${flipY(q.y)}`).join(' '), 'pointer-events': 'none' }),
+          s('text', { class: 'label zone-label', x: mid.x + 1.8, y: flipY(mid.y) + 4.2, 'pointer-events': 'none' }, document.createTextNode(`${Math.round(e.speed * 100)}%`)));
+        for (const part of ['from', 'to']) {
+          layers.events.append(s('g', { class: 'zone-end', 'data-event': i, 'data-part': part, transform: at(posAt(geo, e[part])) },
+            s('circle', { class: 'grab', r: 3 }), s('rect', { class: 'cap', x: -1, y: -1, width: 2, height: 2 })));
+        }
+      } else {
+        layers.events.append(s('g', { class: 'marker', 'data-event': i, 'data-part': 'at', transform: at(posAt(geo, e.at)) },
+          s('circle', { class: 'grab', r: 3.2 }),
+          s('rect', { class: 'diamond', x: -1.5, y: -1.5, width: 3, height: 3, transform: 'rotate(45)' }),
+          s('text', { class: 'label', x: 2.6, y: 4 }, document.createTextNode(cmdLabel(e.command)))));
+      }
+    });
+  }
+
+  // Heading targets of the selected path: a ghost robot facing the target heading, set on the path
+  // where it applies. Drag the ghost along the path to move it, and the round handle to turn it.
+  function drawHeadingTargets(p) {
+    const targets = p && p.headings;
+    if (!targets || !targets.length || (p.heading || {}).mode === 'default') return;
+    const geo = geometry(p);
+    if (!geo || !geo.len) return;
+    targets.forEach((t, i) => {
+      const pos = posAt(geo, t.at);
+      const y = flipY(pos.y);
+      const hx = 9 * Math.cos(rad(t.deg)), hy = -9 * Math.sin(rad(t.deg));
+      layers.events.append(s('g', { class: 'hint', transform: `translate(${pos.x},${y})` },
+        s('g', { transform: `rotate(${-t.deg})`, 'pointer-events': 'none' }, robotShape('robot-box target')),
+        s('line', { class: 'handle-line', x1: 0, y1: 0, x2: hx, y2: hy, 'pointer-events': 'none' }),
+        s('circle', { class: 'htarget-grab', 'data-htarget': i, r: 3.4 }),
+        s('circle', { class: 'htarget-dot', r: 1.5, 'pointer-events': 'none' }),
+        s('circle', { class: 'handle', 'data-hhandle': i, cx: hx, cy: hy, r: 1.7 })));
+    });
   }
 
   function renderOverlay() {
@@ -496,16 +546,19 @@
     const p = focus && point(focus);
     if (p && !isControl(p.name)) {
       const y = flipY(p.y);
-      const { w, l } = S.robot;
-      layers.overlay.append(s('g', { transform: `translate(${p.x},${y}) rotate(${-p.h})`, 'pointer-events': 'none' },
-        s('rect', { class: 'robot-box', x: -l / 2, y: -w / 2, width: l, height: w }),
-        s('line', { class: 'robot-front', x1: l / 2, y1: -w / 2, x2: l / 2, y2: w / 2 })));
+      layers.overlay.append(s('g', { transform: `translate(${p.x},${y}) rotate(${-p.h})`, 'pointer-events': 'none' }, robotShape('robot-box')));
       if (S.selection?.type === 'point' && !readonly()) {
         const hx = p.x + 9 * Math.cos(rad(p.h)), hy = y - 9 * Math.sin(rad(p.h));
         layers.overlay.append(
           s('line', { class: 'handle-line', x1: p.x, y1: y, x2: hx, y2: hy, 'pointer-events': 'none' }),
           s('circle', { class: 'handle', 'data-handle': p.name, cx: hx, cy: hy, r: 1.7 }));
       }
+    }
+    for (const g of S.guides || []) {
+      const n = size();
+      layers.overlay.append(g.axis === 'x'
+        ? s('line', { class: 'guide', x1: g.v, y1: 0, x2: g.v, y2: n })
+        : s('line', { class: 'guide', x1: 0, y1: flipY(g.v), x2: n, y2: flipY(g.v) }));
     }
     if (S.mode === 'add' && S.cursor) {
       const from = endpoint(m);
@@ -528,9 +581,40 @@
     p.y = clamp(p.y, Math.min(e.y, size() / 2), Math.max(size() - e.y, size() / 2));
   };
 
-  const snapPoint = (q, e) => {
+  // Smart guides: while placing or dragging a point it pulls toward lines shared with the other
+  // points (same x or y, so a path can go dead straight), the field's center lines, and the walls.
+  // The pull is gentle (GUIDE_PULL inches) and holding Alt turns it off.
+  const GUIDE_PULL = 1.5;
+  const snapPoint = (q, e, skip) => {
     const f = e.shiftKey ? Math.round : round1;
-    return { x: clamp(f(q.x), 0, size()), y: clamp(f(q.y), 0, size()) };
+    const out = { x: clamp(f(q.x), 0, size()), y: clamp(f(q.y), 0, size()) };
+    S.guides = [];
+    if (e.altKey) return out;
+
+    const dragged = skip && point(skip);
+    const ext = dragged && !isControl(skip) ? extent(dragged.h) : { x: 0, y: 0 };
+    const cands = { x: [], y: [] };
+    for (const p of S.model.points) {
+      if (p.name === skip) continue;
+      cands.x.push({ v: p.x, from: p });
+      cands.y.push({ v: p.y, from: p });
+    }
+    cands.x.push({ v: size() / 2 }, { v: ext.x }, { v: size() - ext.x });
+    cands.y.push({ v: size() / 2 }, { v: ext.y }, { v: size() - ext.y });
+
+    for (const axis of ['x', 'y']) {
+      let best = null;
+      for (const c of cands[axis]) {
+        const d = Math.abs(c.v - q[axis]);
+        if (d <= GUIDE_PULL && (!best || d < best.d)) best = { ...c, d };
+      }
+      if (best) {
+        out[axis] = best.v;
+        S.guides.push({ axis, v: best.v, from: best.from });
+      }
+    }
+    // The pull can have moved the point; guides must still reach the points they came from.
+    return out;
   };
 
   function bindField() {
@@ -539,6 +623,7 @@
     svg.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || !S.model) return;
       const handle = e.target.closest('[data-handle]');
+      const evEl = e.target.closest('[data-event]');
       const ptEl = e.target.closest('[data-point]');
       const pathEl = e.target.closest('[data-path]');
 
@@ -547,7 +632,15 @@
         addSegment(ptEl ? ptEl.dataset.point : null, q.x, q.y);
         return;
       }
-      if (handle && !readonly()) {
+      const htEl = e.target.closest('[data-htarget]');
+      const hhEl = e.target.closest('[data-hhandle]');
+      if ((htEl || hhEl) && !readonly() && S.selection?.type === 'path') {
+        S.drag = { type: hhEl ? 'hturn' : 'hmove', index: Number((hhEl || htEl).dataset[hhEl ? 'hhandle' : 'htarget']), moved: false };
+        svg.setPointerCapture(e.pointerId);
+      } else if (evEl && routineEditable()) {
+        S.drag = { type: 'event', index: Number(evEl.dataset.event), part: evEl.dataset.part, moved: false };
+        svg.setPointerCapture(e.pointerId);
+      } else if (handle && !readonly()) {
         S.drag = { type: 'heading', name: handle.dataset.handle, moved: false };
         svg.setPointerCapture(e.pointerId);
       } else if (ptEl) {
@@ -556,6 +649,7 @@
         if (S.drag) svg.setPointerCapture(e.pointerId);
         renderAll();
       } else if (pathEl) {
+        S.selStep = null;
         S.selection = { type: 'path', name: pathEl.dataset.path };
         renderAll();
       } else {
@@ -572,9 +666,39 @@
       const d = S.drag;
       if (d) {
         if (!d.moved) { pushUndo(); d.moved = true; }
+        if (d.type === 'hmove' || d.type === 'hturn') {
+          const path = S.selection?.type === 'path' ? pathNamed(S.selection.name) : null;
+          const t = path && path.headings && path.headings[d.index];
+          const geo = t && geometry(path);
+          if (geo) {
+            if (d.type === 'hmove') {
+              t.at = clamp(fractionNear(geo, raw), 0.01, 0.99);
+            } else {
+              const pos = posAt(geo, t.at);
+              const a = deg(Math.atan2(raw.y - pos.y, raw.x - pos.x));
+              t.deg = normDeg(e.shiftKey ? Math.round(a) : Math.round(a / 90) * 90);
+            }
+          }
+          changed();
+          return;
+        }
+        if (d.type === 'event') {
+          const step = stepForSelection();
+          const ev = step && step.events[d.index];
+          const path = S.selection?.type === 'path' ? pathNamed(S.selection.name) : null;
+          const geo = ev && path && geometry(path);
+          if (geo) {
+            const f = fractionNear(geo, raw);
+            if (ev.type === 'marker') ev.at = f;
+            else if (d.part === 'from') ev.from = Math.min(f, ev.to - 0.01);
+            else ev.to = Math.max(f, ev.from + 0.01);
+          }
+          changed();
+          return;
+        }
         const p = point(d.name);
         if (d.type === 'move') {
-          const q = snapPoint(raw, e);
+          const q = snapPoint(raw, e, d.name);
           p.x = q.x;
           p.y = q.y;
         } else {
@@ -584,6 +708,7 @@
         fitPoint(p);
         changed();
       } else if (S.mode === 'add') {
+        S.cursor = snapPoint(raw, e);
         renderOverlay();
       }
     });
@@ -593,9 +718,10 @@
       if (pathEl && !readonly() && S.mode !== 'add') addControlAt(pathEl.dataset.path, clientToField(e));
     });
 
-    svg.addEventListener('pointerup', () => { S.drag = null; });
-    svg.addEventListener('pointercancel', () => { S.drag = null; });
-    svg.addEventListener('pointerleave', () => { $('#readout').textContent = ''; S.cursor = null; if (S.mode === 'add') renderOverlay(); });
+    const endDrag = () => { S.drag = null; if (S.guides && S.guides.length) { S.guides = []; renderOverlay(); } };
+    svg.addEventListener('pointerup', endDrag);
+    svg.addEventListener('pointercancel', endDrag);
+    svg.addEventListener('pointerleave', () => { $('#readout').textContent = ''; S.cursor = null; S.guides = []; if (S.mode === 'add') renderOverlay(); });
 
     svg.addEventListener('pointerover', (e) => {
       const el = e.target.closest('[data-point]');
@@ -610,6 +736,275 @@
     renderAll();
   }
 
+  // ---- routine ------------------------------------------------------------
+  // The auto's routine(): an ordered list of steps (follow a path, set a state, wait, move the
+  // flower bar). A path step can also carry markers (a command at a point along the path) and
+  // speed zones (a speed cap between two points). Positions are fractions of the path's length.
+
+  const routineOf = (m = S.model) => (m && m.routine) || null;
+  const routineEditable = () => !!routineOf() && !routineOf().locked && !readonly();
+
+  const cmdKey = (c) => (c.type === 'wait' ? 'wait' : `${c.type}:${c.value}`);
+  function cmdFromKey(key, prev) {
+    if (key === 'wait') return { type: 'wait', seconds: prev && prev.type === 'wait' ? prev.seconds : 1 };
+    const [type, value] = key.split(':');
+    return { type, value };
+  }
+  const cmdLabel = (c) => (c.type === 'state' ? c.value : c.type === 'bar' ? `bar ${c.value}` : `wait ${fmt(c.seconds)}s`);
+
+  function commandSelect(c, onChange, allowWait = true) {
+    const cfg = S.config;
+    const opt = (key, text) => h('option', { value: key, selected: cmdKey(c) === key, text });
+    const groups = [
+      h('optgroup', { label: 'Robot state' }, cfg.states.map((v) => opt(`state:${v}`, `State: ${v}`))),
+      h('optgroup', { label: 'Flower bar' }, cfg.barStates.map((v) => opt(`bar:${v}`, `Flower bar: ${v}`))),
+    ];
+    if (allowWait) groups.push(opt('wait', 'Wait'));
+    return h('select', { 'aria-label': 'Command', disabled: !routineEditable(), onchange: (e) => onChange(cmdFromKey(e.target.value, c)) }, groups);
+  }
+
+  const secondsInput = (c, onCommit) => h('input', {
+    type: 'number', min: 0, max: 600, step: 0.1, value: fmt(c.seconds), disabled: !routineEditable(), 'aria-label': 'Seconds',
+    onchange: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) onCommit(clamp(v, 0, 600)); else renderAll(); },
+  });
+
+  function editSteps(fn) {
+    if (!routineEditable()) return;
+    edit((m) => fn(m.routine.steps));
+  }
+
+  function addStep(key) {
+    editSteps((steps) => {
+      if (key.startsWith('path:')) steps.push({ type: 'path', path: key.slice(5), events: [] });
+      else steps.push(cmdFromKey(key));
+    });
+  }
+
+  // Move the step at index `from` so it ends up before index `to` (0..length) of the current list.
+  function reorderStep(from, to) {
+    editSteps((steps) => {
+      const picked = steps[S.selStep];
+      const [moved] = steps.splice(from, 1);
+      steps.splice(to > from ? to - 1 : to, 0, moved);
+      if (picked) S.selStep = steps.indexOf(picked);
+    });
+  }
+
+  // Drag to reorder: the card lifts off the list and follows the pointer while the others slide
+  // around an empty gap. The step order only changes when it is dropped.
+  const drag = { suppressClick: false };
+
+  function beginReorder(e, card, from) {
+    if (e.button !== 0 || e.target.closest('select, input, .small')) return;
+    const list = card.parentNode;
+    const startX = e.clientX, startY = e.clientY;
+    let st = null; // set once the pointer has moved far enough to count as a drag
+
+    const move = (ev) => {
+      if (!st) {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
+        st = lift(list, card, startY);
+      }
+      ev.preventDefault();
+      carry(st, ev.clientY);
+    };
+    const end = (cancelled) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', cancel);
+      window.removeEventListener('keydown', key, true);
+      if (st) drop(st, from, cancelled);
+    };
+    const up = () => end(false);
+    const cancel = () => end(true);
+    const key = (ev) => { if (ev.key === 'Escape') { ev.stopPropagation(); end(true); } };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', cancel);
+    window.addEventListener('keydown', key, true);
+  }
+
+  const cardsBefore = (list, gap, card) => [...list.children]
+    .filter((r) => r !== card && r !== gap && gap.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_PRECEDING).length;
+
+  function lift(list, card, startY) {
+    const rect = card.getBoundingClientRect();
+    const gap = h('li', { class: 'step-gap', 'aria-hidden': 'true' });
+    gap.style.height = `${rect.height}px`;
+    list.insertBefore(gap, card);
+    Object.assign(card.style, { position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, zIndex: '50', pointerEvents: 'none' });
+    card.classList.add('lifted');
+    list.classList.add('reordering');
+    document.body.style.cursor = 'grabbing';
+    drag.suppressClick = true;
+    return { list, card, gap, grab: startY - rect.top };
+  }
+
+  function carry(st, y) {
+    const { list, card, gap } = st;
+    const top = y - st.grab;
+    card.style.top = `${top}px`;
+    const side = $('#sidebar');
+    const sr = side.getBoundingClientRect();
+    if (y < sr.top + 28) side.scrollTop -= 10; else if (y > sr.bottom - 28) side.scrollTop += 10;
+
+    const center = top + card.offsetHeight / 2;
+    const others = [...list.children].filter((r) => r !== card && r !== gap);
+    const want = others.filter((r) => { const b = r.getBoundingClientRect(); return b.top + b.height / 2 < center; }).length;
+    if (want === cardsBefore(list, gap, card)) return;
+
+    const tops = new Map(others.map((r) => [r, r.getBoundingClientRect().top]));
+    list.insertBefore(gap, others[want] || null);
+    for (const r of others) {
+      const dy = tops.get(r) - r.getBoundingClientRect().top;
+      if (!dy) continue;
+      r.style.transition = 'none';
+      r.style.transform = `translateY(${dy}px)`;
+      void r.offsetHeight;
+      r.style.transition = 'transform 140ms ease';
+      r.style.transform = '';
+    }
+  }
+
+  function drop(st, from, cancelled) {
+    const { list, card, gap } = st;
+    const to = cardsBefore(list, gap, card);
+    let done = false;
+    const settle = () => {
+      if (done) return;
+      done = true;
+      document.body.style.cursor = '';
+      if (cancelled || to === from) renderSidebar();
+      else reorderStep(from, to > from ? to + 1 : to);
+      setTimeout(() => { drag.suppressClick = false; }, 0);
+    };
+    if (cancelled) { settle(); return; }
+    card.style.transition = 'top 120ms ease';
+    card.style.top = `${gap.getBoundingClientRect().top}px`;
+    setTimeout(settle, 130);
+  }
+
+  function removeStep(i) {
+    editSteps((steps) => {
+      steps.splice(i, 1);
+      S.selStep = null;
+    });
+  }
+
+  function selectStep(i) {
+    const step = routineOf().steps[i];
+    if (step.type !== 'path') return;
+    S.selStep = i;
+    S.selection = { type: 'path', name: step.path };
+    renderAll();
+  }
+
+  // The step whose markers and zones show for the selected path: the one picked in the
+  // routine list, else the first step that follows it.
+  function stepForSelection() {
+    const r = routineOf();
+    if (!r || S.selection?.type !== 'path') return null;
+    const picked = r.steps[S.selStep];
+    if (picked && picked.type === 'path' && picked.path === S.selection.name) return picked;
+    return r.steps.find((st) => st.type === 'path' && st.path === S.selection.name) || null;
+  }
+
+  function stepRow(step, i) {
+    const r = routineOf();
+    const ed = routineEditable();
+    const active = step.type === 'path' && S.selection?.type === 'path' && S.selection.name === step.path && stepForSelection() === step;
+    let body;
+    if (step.type === 'path') {
+      const marks = step.events.filter((e) => e.type === 'marker').length;
+      const zones = step.events.filter((e) => e.type === 'zone').length;
+      const meta = [marks && `${marks} marker${marks > 1 ? 's' : ''}`, zones && `${zones} zone${zones > 1 ? 's' : ''}`].filter(Boolean).join(' · ');
+      body = h('button', { type: 'button', class: 'link step-main', title: 'Show on the field', onclick: () => selectStep(i) },
+        h('span', { text: `Follow ${step.path}` }), meta && h('span', { class: 'meta', text: meta }));
+    } else {
+      body = h('div', { class: 'step-cmd' },
+        commandSelect(step, (c) => editSteps((steps) => { steps[i] = c; })),
+        step.type === 'wait' && h('span', { class: 'secs' }, secondsInput(step, (v) => editSteps((steps) => { steps[i].seconds = v; })), h('span', { class: 'muted', text: 's' })));
+    }
+    const row = h('li', {
+      class: `step${active ? ' sel' : ''}${ed ? ' movable' : ''}`,
+      // Drag from anywhere on the card except its own controls.
+      onpointerdown: ed ? (e) => beginReorder(e, row, i) : null,
+    },
+    body,
+    h('button', { type: 'button', class: 'small', disabled: !ed, 'aria-label': 'Remove step', onclick: () => removeStep(i), text: '×' }));
+    return row;
+  }
+
+  function stepList(cards) {
+    const list = h('ol', { class: 'list steps' }, cards);
+    // A drag ends with a click on whatever is under the pointer; that is not a click on a step.
+    list.addEventListener('click', (e) => { if (drag.suppressClick) { e.stopPropagation(); e.preventDefault(); } }, true);
+    return list;
+  }
+
+  const addPathButton = () => h('button', {
+    type: 'button', class: `small${S.mode === 'add' ? ' active' : ''}`, disabled: readonly(),
+    title: 'Click on the field to draw new paths (P)', onclick: () => setMode(S.mode === 'add' ? 'select' : 'add'),
+  }, S.mode === 'add' ? 'Done' : 'Add path');
+
+  function routineSection() {
+    const r = routineOf();
+    if (!r) return null;
+    const m = S.model;
+    const add = h('select', {
+      'aria-label': 'Add a step', disabled: !routineEditable(),
+      onchange: (e) => { const v = e.target.value; e.target.value = ''; if (v) addStep(v); },
+    },
+      h('option', { value: '', selected: true, text: 'Add step…' }),
+      h('optgroup', { label: 'Drive' }, m.paths.map((p) => h('option', { value: `path:${p.name}`, text: `Follow ${p.name}` }))),
+      h('optgroup', { label: 'Robot state' }, S.config.states.map((v) => h('option', { value: `state:${v}`, text: `State: ${v}` }))),
+      h('optgroup', { label: 'Flower bar' }, S.config.barStates.map((v) => h('option', { value: `bar:${v}`, text: `Flower bar: ${v}` }))),
+      h('option', { value: 'wait', text: 'Wait' }));
+    return h('div', { class: 'section' },
+      h('div', { class: 'section-head' }, h('span', { text: 'Routine' }), addPathButton()),
+      h('label', { class: 'check reset-toggle', title: 'Start the routine with the robot in IDLE and the flower bar UP. Written to the routine, but not listed as steps.' },
+        h('input', { type: 'checkbox', checked: !!r.reset, disabled: !routineEditable(), onchange: (e) => edit((model) => { model.routine.reset = e.target.checked; }) }),
+        h('span', { text: 'Reset robot' }),
+        h('span', { class: 'muted', text: 'IDLE, flower bar UP' })),
+      r.locked && h('div', { class: 'error-text' }, h('div', { text: 'The editor can\'t rewrite this routine, so it is read-only:' }), r.issues.slice(0, 3).map((i) => h('div', { text: i }))),
+      r.steps.length ? stepList(r.steps.map(stepRow)) : h('div', { class: 'empty', text: 'No steps yet' }),
+      h('div', { class: 'add-step' }, add));
+  }
+
+  // A straight path is just its two ends. Split it up so a position part-way along (a marker, a
+  // zone edge, the robot at some moment) can be found; curves are already sampled finely.
+  function dense(pts, n = 200) {
+    if (pts.length > 2) return pts;
+    const [a, b] = pts;
+    return Array.from({ length: n + 1 }, (_, i) => ({ x: a.x + ((b.x - a.x) * i) / n, y: a.y + ((b.y - a.y) * i) / n }));
+  }
+
+  // Path geometry for placing markers: sampled points with cumulative arc length.
+  function geometry(p) {
+    const raw = samples(S.model, p, 200);
+    const pts = raw && dense(raw);
+    if (!pts) return null;
+    const cum = [0];
+    for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+    return { pts, cum, len: cum[cum.length - 1] };
+  }
+
+  function fractionNear(geo, q) {
+    let best = 0, bestD = Infinity;
+    geo.pts.forEach((a, i) => { const d = Math.hypot(a.x - q.x, a.y - q.y); if (d < bestD) { bestD = d; best = i; } });
+    return geo.len ? Math.round((geo.cum[best] / geo.len) * 200) / 200 : 0;
+  }
+
+  // The part of the path between two fractions, for drawing a zone.
+  function slice(geo, f0, f1) {
+    const out = [];
+    const at = (f) => posAt(geo, f);
+    out.push(at(f0));
+    geo.pts.forEach((a, i) => { if (geo.cum[i] > f0 * geo.len && geo.cum[i] < f1 * geo.len) out.push(a); });
+    out.push(at(f1));
+    return out;
+  }
+
   // ---- sidebar ------------------------------------------------------------
 
   function renderSidebar() {
@@ -622,7 +1017,8 @@
       h('div', { class: 'file-row' },
         h('select', { 'aria-label': 'Paths file', onchange: (e) => openFile(e.target.value) },
           S.files.map((f) => h('option', { value: f.file, selected: f.file === S.file, text: f.file.replace(/\.java$/, '') + (f.locked ? ' (read-only)' : '') }))),
-        h('button', { type: 'button', title: 'New paths file', onclick: () => { S.newFile = { open: !nf.open, error: '' }; renderSidebar(); if (S.newFile.open) $('#new-name')?.focus(); } }, 'New')),
+        h('button', { type: 'button', title: 'Create a new auto (paths + red and blue opmodes)', onclick: () => { S.newFile = { open: !nf.open, error: '' }; renderSidebar(); if (S.newFile.open) $('#new-name')?.focus(); } }, 'New'),
+        h('button', { type: 'button', class: 'danger', title: 'Delete this auto and its opmode files', disabled: !S.file, onclick: deleteFile }, 'Delete')),
       nf.open && h('form', { class: 'new-file', onsubmit: createFile },
         h('input', { id: 'new-name', type: 'text', placeholder: 'e.g. ParkAuto', autocomplete: 'off', spellcheck: 'false', 'aria-label': 'Auto name' }),
         h('button', { type: 'submit' }, 'Create')),
@@ -631,24 +1027,20 @@
     const pathItems = m ? m.paths.map((p) => h('li', {
       class: S.selection?.type === 'path' && S.selection.name === p.name ? 'sel' : '',
       onclick: () => { S.selection = { type: 'path', name: p.name }; renderAll(); },
-    }, h('span', { class: 'name', text: p.name }), h('span', { class: 'meta', text: `${p.pts.length > 2 ? 'curve' : 'line'} · ${p.pts[0]} → ${p.pts[p.pts.length - 1]}` }))) : [];
+    }, h('span', { class: 'name', text: p.name }), h('span', { class: 'meta', text: p.pts.length > 2 ? 'curve' : 'line' }))) : [];
 
-    const pathSection = h('div', { class: 'section' },
+    // Paths the routine doesn't follow stay reachable here; without a routine every path is listed.
+    const r = routineOf();
+    const managed = !!r && !r.locked;
+    const used = new Set(managed ? r.steps.filter((st) => st.type === 'path').map((st) => st.path) : []);
+    const listed = m ? m.paths.filter((p) => !used.has(p.name)) : [];
+    const pathSection = managed && !listed.length ? null : h('div', { class: 'section' },
       h('div', { class: 'section-head' },
-        h('span', { text: 'Paths' }),
-        h('button', { type: 'button', class: `small${S.mode === 'add' ? ' active' : ''}`, disabled: readonly(), title: 'Click on the field to draw new paths (P)', onclick: () => setMode(S.mode === 'add' ? 'select' : 'add') }, S.mode === 'add' ? 'Done' : 'Add path')),
-      pathItems.length ? h('ul', { class: 'list' }, pathItems) : h('div', { class: 'empty', text: 'No paths yet' }));
+        h('span', { text: managed ? 'Not in routine' : 'Paths' }),
+        !managed && addPathButton()),
+      listed.length ? h('ul', { class: 'list' }, pathItems.filter((li, i) => !used.has(m.paths[i].name))) : h('div', { class: 'empty', text: 'No paths yet' }));
 
-    const pointItems = m ? m.points.map((p) => h('li', {
-      class: S.selection?.type === 'point' && S.selection.name === p.name ? 'sel' : '',
-      onclick: () => { S.selection = { type: 'point', name: p.name }; renderAll(); },
-    }, h('span', { class: 'name', text: p.name }), h('span', { class: 'meta', text: `${fmt(p.x)}, ${fmt(p.y)}` }))) : [];
-
-    const pointSection = h('div', { class: 'section' },
-      h('div', { class: 'section-head' }, h('span', { text: 'Points' })),
-      pointItems.length ? h('ul', { class: 'list' }, pointItems) : h('div', { class: 'empty', text: 'No points' }));
-
-    setChildren(root, fileSection, pathSection, pointSection);
+    setChildren(root, fileSection, routineSection(), pathSection);
   }
 
   async function createFile(e) {
@@ -664,6 +1056,26 @@
       renderSidebar();
       $('#new-name').value = name;
     }
+  }
+
+  async function deleteFile() {
+    const f = S.files.find((x) => x.file === S.file);
+    if (!f) return;
+    const name = f.file.replace(/\.java$/, '');
+    if (!confirm(`Delete ${name}?\n\nThis permanently deletes:\n${f.family.map((x) => `  ${x}`).join('\n')}`)) return;
+    clearTimeout(S.saveTimer);
+    S.saving = false;
+    try {
+      await api(`/files/${f.file}`, { method: 'DELETE' });
+    } catch (err) {
+      flash(err.message, true);
+      return;
+    }
+    S.file = null;
+    S.model = null;
+    await refreshFiles();
+    if (S.files.length) await openFile(S.files[0].file); else renderAll();
+    flash(`Deleted ${name}`);
   }
 
   // ---- inspector ----------------------------------------------------------
@@ -784,13 +1196,88 @@
         hd.mode === 'default' && h('option', { value: 'default', selected: true, text: 'Not set (Pedro default)' }),
         HEADING_LABELS.map(([v, label]) => h('option', { value: v, selected: v === hd.mode, text: label }))), 'top'),
       headingParams,
+      hd.mode !== 'default' && headingTargetsSection(p),
+      eventsSection(p),
       h('div', { class: 'actions' },
-        h('button', { type: 'button', onclick: () => copy(`robot.drivetrain.follow(paths.${p.name}())`), text: 'Copy follow()' }),
         h('button', { type: 'button', class: 'danger', disabled: readonly(), onclick: () => deletePath(p.name), text: 'Delete path' })));
   }
 
-  async function copy(text) {
-    try { await navigator.clipboard.writeText(text); flash('Copied'); } catch { flash('Copy failed', true); }
+  // Heading targets: the robot is facing `deg` by `at` of the way along the path, then heads on
+  // toward the next target (or the path's own end heading). Saved in the paths class.
+  function headingTargetsSection(p) {
+    const list = p.headings || [];
+    const set = (fn) => edit(() => { if (!p.headings) p.headings = []; fn(p.headings); if (!p.headings.length) delete p.headings; });
+    const add = () => {
+      const geo = geometry(p);
+      const guess = geo ? Math.round(deg(headingAt({ ...geo, path: p, entering: 0 }, 0.5))) : 0;
+      set((hs) => hs.push({ at: 0.5, deg: normDeg(Math.round(guess / 90) * 90) }));
+    };
+    return [
+      h('hr', { class: 'rule' }),
+      h('div', { class: 'section-head' }, h('span', { text: 'Heading targets' }),
+        h('button', { type: 'button', class: 'small', disabled: readonly(), onclick: add, text: 'Add' })),
+      list.length ? list.map((t) => h('div', { class: 'event' },
+        h('div', { class: 'event-head' },
+          h('span', { class: 'muted', text: 'At' }),
+          h('input', {
+            type: 'number', min: 1, max: 99, step: 1, value: String(Math.round(t.at * 1000) / 10), disabled: readonly(), 'aria-label': 'Position, percent',
+            onchange: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) set(() => { t.at = clamp(v, 1, 99) / 100; }); else renderAll(); },
+          }),
+          h('span', { class: 'muted', text: '%' }),
+          h('button', { type: 'button', class: 'small', disabled: readonly(), 'aria-label': 'Remove', onclick: () => set((hs) => hs.splice(hs.indexOf(t), 1)), text: '×' })),
+        h('div', { class: 'event-head' },
+          h('span', { class: 'muted', text: 'Face' }),
+          h('input', {
+            type: 'number', step: 1, value: String(Math.round(t.deg * 10) / 10), disabled: readonly(), 'aria-label': 'Heading, degrees',
+            onchange: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) set(() => { t.deg = normDeg(Math.round(v * 10) / 10); }); else renderAll(); },
+          }),
+          h('span', { class: 'muted', text: '°' }))))
+        : h('div', { class: 'muted', text: 'Turn the robot to face a heading part-way along this path, then on to the path\'s end heading.' }),
+    ];
+  }
+
+  const pctInput = (fraction, onCommit, label) => h('input', {
+    type: 'number', min: 0, max: 100, step: 1, value: String(Math.round(fraction * 1000) / 10), disabled: !routineEditable(), 'aria-label': label,
+    onchange: (e) => { const v = parseFloat(e.target.value); if (Number.isFinite(v)) onCommit(clamp(v, 0, 100) / 100); else renderAll(); },
+  });
+
+  // Markers and speed zones of the routine step that follows the selected path.
+  function eventsSection(p) {
+    const r = routineOf();
+    if (!r) return [];
+    const step = stepForSelection();
+    if (!step) {
+      return [h('hr', { class: 'rule' }),
+        h('div', { class: 'muted', text: 'This path is not in the routine.' }),
+        h('div', { class: 'actions' }, h('button', { type: 'button', disabled: !routineEditable(), onclick: () => addStep(`path:${p.name}`), text: 'Add to routine' }))];
+    }
+    const ed = routineEditable();
+    const remove = (e) => h('button', { type: 'button', class: 'small', disabled: !ed, 'aria-label': 'Remove', onclick: () => editSteps(() => { step.events.splice(step.events.indexOf(e), 1); }), text: '×' });
+    const markers = step.events.filter((e) => e.type === 'marker');
+    const zones = step.events.filter((e) => e.type === 'zone');
+
+    return [
+      h('hr', { class: 'rule' }),
+      h('div', { class: 'section-head' }, h('span', { text: 'Markers' }),
+        h('button', { type: 'button', class: 'small', disabled: !ed, onclick: () => editSteps(() => { step.events.push({ type: 'marker', at: 0.5, command: { type: 'state', value: S.config.states[0] } }); }), text: 'Add' })),
+      markers.length ? markers.map((e) => h('div', { class: 'event' },
+        h('div', { class: 'event-head' }, h('span', { class: 'muted', text: 'At' }), pctInput(e.at, (v) => editSteps(() => { e.at = v; }), 'Position, percent'), h('span', { class: 'muted', text: '%' }), remove(e)),
+        commandSelect(e.command, (c) => editSteps(() => { e.command = c; }), false)))
+        : h('div', { class: 'muted', text: 'Run a command when the robot passes a point on this path.' }),
+      h('div', { class: 'section-head spaced' }, h('span', { text: 'Speed zones' }),
+        h('button', { type: 'button', class: 'small', disabled: !ed, onclick: () => editSteps(() => { step.events.push({ type: 'zone', from: 0.3, to: 0.6, speed: 0.5 }); }), text: 'Add' })),
+      zones.length ? zones.map((e) => h('div', { class: 'event' },
+        h('div', { class: 'event-head' },
+          h('span', { class: 'muted', text: 'From' }), pctInput(e.from, (v) => editSteps(() => { e.from = Math.min(v, e.to - 0.01); }), 'Zone start, percent'),
+          h('span', { class: 'muted', text: 'to' }), pctInput(e.to, (v) => editSteps(() => { e.to = Math.max(v, e.from + 0.01); }), 'Zone end, percent'),
+          h('span', { class: 'muted', text: '%' }), remove(e)),
+        h('div', { class: 'event-head' }, h('span', { class: 'muted', text: 'Max' }),
+          h('input', {
+            type: 'number', min: 1, max: 100, step: 1, value: String(Math.round(e.speed * 100)), disabled: !ed, 'aria-label': 'Max speed, percent of full speed',
+            onchange: (ev) => { const v = parseFloat(ev.target.value); if (v > 0) editSteps(() => { e.speed = clamp(v, 1, 100) / 100; }); else renderAll(); },
+          }), h('span', { class: 'muted', text: '% speed' }))))
+        : h('div', { class: 'muted', text: 'Cap the robot\'s speed (as a percent of full speed) between two points on this path.' }),
+    ];
   }
 
   // ---- banner / chrome ----------------------------------------------------
@@ -880,20 +1367,30 @@
   // interpolated against arc-length completion. Linear takes the shortest turn, tangent
   // follows the curve, and a path with no heading call leaves the robot's heading alone.
 
-  const BASE_SPEED = 50; // inches per second at 1x
   const TAU = Math.PI * 2;
   const norm = (a) => ((a % TAU) + TAU) % TAU;
   const normSigned = (a) => { const n = norm(a); return n >= Math.PI ? n - TAU : n; };
   const PL = { sequences: [], seq: 'all', timeline: null, time: 0, playing: false, rate: 1, last: 0 };
 
   async function loadSequences() {
-    try { PL.sequences = await api(`/files/${S.file}/sequence`); } catch { PL.sequences = []; }
+    if (routineOf()) PL.sequences = [{ auto: S.file.replace(/\.java$/, '') }];
+    else try { PL.sequences = await api(`/files/${S.file}/sequence`); } catch { PL.sequences = []; }
     if (!PL.sequences.some((x) => x.auto === PL.seq)) PL.seq = PL.sequences.length ? PL.sequences[0].auto : 'all';
     renderSeqOptions();
     rebuildPlayer();
   }
 
+  // The routine as playback steps: states and flower bar moves are labels, waits hold the robot.
+  const playStep = (st) => (st.type === 'path' ? { type: 'path', name: st.path, events: st.events }
+    : st.type === 'wait' ? { type: 'wait', seconds: st.seconds }
+      : { type: 'state', name: st.type === 'bar' ? `bar ${st.value}` : st.value });
+
   function currentSteps() {
+    if (routineOf() && PL.seq !== 'all') {
+      const r = routineOf();
+      // The hidden reset pair still happens first in the real routine, so playback shows it too.
+      return [...(r.reset ? [{ type: 'state', name: 'IDLE' }, { type: 'state', name: 'bar UP' }] : []), ...r.steps.map(playStep)];
+    }
     const found = PL.sequences.find((x) => x.auto === PL.seq);
     return found ? found.steps : S.model.paths.map((p) => ({ type: 'path', name: p.name }));
   }
@@ -910,7 +1407,22 @@
     return { x: pts[lo].x + (pts[hi].x - pts[lo].x) * u, y: pts[lo].y + (pts[hi].y - pts[lo].y) * u, i: lo };
   }
 
+  // The heading along a path: its own mode's heading at the start and end, and between them the
+  // heading targets (each reached at its position, turning the shorter way, then on to the next).
   function headingAt(seg, f) {
+    const targets = seg.path.headings;
+    if (!targets || !targets.length || (seg.path.heading || {}).mode === 'default') return baseHeadingAt(seg, f);
+    const stops = [{ at: 0, h: baseHeadingAt(seg, 0) },
+      ...[...targets].sort((a, b) => a.at - b.at).map((t) => ({ at: t.at, h: norm(rad(t.deg)) })),
+      { at: 1, h: baseHeadingAt(seg, 1) }];
+    let i = 0;
+    while (i < stops.length - 2 && f > stops[i + 1].at) i++;
+    const span = stops[i + 1].at - stops[i].at;
+    const u = span > 0 ? clamp((f - stops[i].at) / span, 0, 1) : 1;
+    return norm(stops[i].h + normSigned(stops[i + 1].h - stops[i].h) * u);
+  }
+
+  function baseHeadingAt(seg, f) {
     const hd = seg.path.heading || { mode: 'default' };
     const pos = posAt(seg, f);
     const tangent = () => {
@@ -930,25 +1442,100 @@
     }
   }
 
+  // The fraction of a segment covered after `time` seconds on it.
+  function fractionAt(seg, time) {
+    const target = clamp(time / seg.scale, 0, seg.tc[seg.tc.length - 1]);
+    const { cum, tc } = seg;
+    let lo = 0, hi = tc.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (tc[mid] <= target) lo = mid; else hi = mid;
+    }
+    const u = clamp((target - tc[lo]) / (tc[hi] - tc[lo] || 1), 0, 1);
+    return seg.len ? clamp((cum[lo] + (cum[hi] - cum[lo]) * u) / seg.len, 0, 1) : 1;
+  }
+
+  // How fast the robot goes at each sample along a path, from the robot's own numbers
+  // (Constants.java): it speeds up like a motor (fast at first, easing into top speed), takes zone
+  // caps as a fraction of top speed, sheds speed at its natural deceleration (so it has to start
+  // slowing before a zone does), and stops at the end of the path in the distance its brake
+  // controller needs (c1*v + c2*v^2). Each path starts and ends at rest.
+  function speedProfile(cum, zones) {
+    const R = S.config.robot;
+    const n = cum.length, len = cum[n - 1];
+    const cap = cum.map((d) => R.maxVelocity * Math.min(1, ...zones.filter((z) => d / len >= z.from && d / len < z.to).map((z) => z.speed)));
+    const stopSpeed = (room) => (R.brakeQuadratic > 0
+      ? (-R.brakeLinear + Math.sqrt(R.brakeLinear ** 2 + 4 * R.brakeQuadratic * room)) / (2 * R.brakeQuadratic)
+      : room / (R.brakeLinear || 1));
+
+    const limit = cap.slice();
+    limit[n - 1] = 0;
+    for (let i = n - 2; i >= 0; i--) {
+      const ds = cum[i + 1] - cum[i];
+      limit[i] = Math.min(limit[i], Math.sqrt(limit[i + 1] ** 2 + 2 * R.naturalDecel * ds), stopSpeed(len - cum[i]));
+    }
+
+    const v = new Array(n).fill(0);
+    for (let i = 0; i < n - 1; i++) {
+      const ds = cum[i + 1] - cum[i];
+      const accel = Math.max(0, (R.maxVelocity - v[i]) / R.accelTimeConstant);
+      v[i + 1] = Math.min(limit[i + 1], Math.sqrt(v[i] ** 2 + 2 * accel * ds));
+    }
+
+    const tc = [0];
+    for (let i = 1; i < n; i++) tc.push(tc[i - 1] + (2 * (cum[i] - cum[i - 1])) / Math.max(v[i - 1] + v[i], 1e-6));
+    return { v, tc };
+  }
+
+  // When a marker fires: PathEvents runs it once progress + speed * lead reaches the marker, so it
+  // goes off a little early, by the distance covered in Constants.Auto.eventLeadSeconds.
+  function markerTime(seg, at) {
+    const lead = S.config.robot.eventLeadSeconds;
+    for (let i = 0; i < seg.cum.length; i++) {
+      if (seg.cum[i] + seg.v[i] * lead >= at * seg.len) return seg.tc[i] * seg.scale;
+    }
+    return seg.dur;
+  }
+
+  function speedAt(seg, f) {
+    const target = f * seg.len;
+    const { cum, v } = seg;
+    let lo = 0, hi = cum.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (cum[mid] <= target) lo = mid; else hi = mid;
+    }
+    const u = clamp((target - cum[lo]) / (cum[hi] - cum[lo] || 1), 0, 1);
+    return v[lo] + (v[hi] - v[lo]) * u;
+  }
+
   function rebuildPlayer() {
     const m = S.model;
     if (!m) { PL.timeline = null; renderRobot(); renderPlayerChrome(); return; }
-    const segs = [], states = [];
+    const segs = [], states = [], waits = [];
     let t = 0, heading = null;
     for (const step of currentSteps()) {
       if (step.type === 'state') { states.push({ t, name: step.name }); continue; }
+      if (step.type === 'wait') { waits.push({ t0: t, dur: step.seconds }); t += step.seconds; continue; }
       const p = pathNamed(step.name);
-      const pts = p && samples(m, p, 200);
+      const raw = p && samples(m, p, 200);
+      const pts = raw && dense(raw);
       if (!pts) continue;
       const cum = [0];
       for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
       const len = cum[cum.length - 1];
-      const seg = { path: p, t0: t, dur: Math.max(len / BASE_SPEED, 0.2), pts, cum, len, entering: heading ?? rad(point(p.pts[0]).h) };
+      const events = step.events || [];
+      const zones = events.filter((e) => e.type === 'zone');
+      const { v, tc } = speedProfile(cum, zones);
+      const dur = Math.max(tc[tc.length - 1], 0.2);
+      const seg = { path: p, t0: t, dur, pts, cum, tc, v, len, zones, scale: dur / (tc[tc.length - 1] || 1), entering: heading ?? rad(point(p.pts[0]).h) };
       heading = headingAt(seg, 1);
+      for (const e of events) if (e.type === 'marker') states.push({ t: t + markerTime(seg, e.at), name: cmdLabel(e.command) });
       segs.push(seg);
-      t += seg.dur;
+      t += dur;
     }
-    PL.timeline = { segs, states, total: t };
+    states.sort((a, b) => a.t - b.t);
+    PL.timeline = { segs, states, waits, total: t };
     PL.time = Math.min(PL.time, t);
     renderRobot();
     renderPlayerChrome();
@@ -957,23 +1544,26 @@
   function poseAt(time) {
     const tl = PL.timeline;
     if (!tl || !tl.segs.length) return null;
-    const seg = tl.segs.find((x) => time < x.t0 + x.dur) || tl.segs[tl.segs.length - 1];
-    const f = clamp((time - seg.t0) / seg.dur, 0, 1);
+    let i = tl.segs.findIndex((x) => time < x.t0 + x.dur);
+    if (i < 0) i = tl.segs.length - 1;
+    let seg = tl.segs[i];
+    let f = fractionAt(seg, time - seg.t0);
+    // In a wait between two paths the robot stays where the previous one ended.
+    if (time < seg.t0 && i > 0) { seg = tl.segs[i - 1]; f = 1; }
     const pos = posAt(seg, f);
-    return { x: pos.x, y: pos.y, h: headingAt(seg, f), seg };
+    return { x: pos.x, y: pos.y, h: headingAt(seg, f), seg, f, speed: time < seg.t0 && i > 0 ? 0 : speedAt(seg, f) };
   }
 
   function renderRobot() {
     layers.robot.replaceChildren();
     const pose = poseAt(PL.time);
     if (!pose) { $('#pstate').textContent = ''; return; }
-    const { w, l } = S.robot;
-    layers.robot.append(s('g', { transform: `translate(${pose.x},${flipY(pose.y)}) rotate(${-deg(pose.h)})` },
-      s('rect', { class: 'robot-box play', x: -l / 2, y: -w / 2, width: l, height: w }),
-      s('line', { class: 'robot-front', x1: l / 2, y1: -w / 2, x2: l / 2, y2: w / 2 })));
+    layers.robot.append(s('g', { transform: `translate(${pose.x},${flipY(pose.y)}) rotate(${-deg(pose.h)})` }, robotShape('robot-box play')));
     const states = PL.timeline.states.filter((x) => x.t <= PL.time + 1e-6);
     const state = states.length ? states[states.length - 1].name : '';
-    $('#pstate').textContent = `${pose.seg.path.name}${state ? ` · ${state}` : ''}`;
+    const zone = pose.seg.zones.find((z) => pose.f >= z.from && pose.f < z.to);
+    const waiting = PL.timeline.waits.some((w) => PL.time >= w.t0 && PL.time < w.t0 + w.dur);
+    $('#pstate').textContent = [pose.seg.path.name, state, `${Math.round(pose.speed)} in/s`, zone && `cap ${Math.round(zone.speed * 100)}%`, waiting && 'waiting'].filter(Boolean).join(' · ');
   }
 
   function renderSeqOptions() {
@@ -1073,8 +1663,29 @@
     bindKeys();
     bindPlayer();
 
-    $('#ghost').checked = S.ghost;
-    $('#ghost').addEventListener('change', (e) => { S.ghost = e.target.checked; store.set('pathviz.ghost', S.ghost); renderField(); });
+    const panel = $('#panel');
+    const showPanel = (visible) => {
+      document.querySelector('main').classList.toggle('no-inspector', !visible);
+      panel.setAttribute('aria-pressed', String(visible));
+      panel.textContent = visible ? 'Hide details' : 'Show details';
+    };
+    showPanel(store.get('pathviz.panel', true));
+    panel.addEventListener('click', () => {
+      const visible = document.querySelector('main').classList.contains('no-inspector');
+      store.set('pathviz.panel', visible);
+      showPanel(visible);
+    });
+
+    const bar = $('#bar');
+    const showBar = (visible) => {
+      S.showBar = visible;
+      bar.setAttribute('aria-pressed', String(visible));
+      renderAll();
+      renderRobot();
+    };
+    bar.setAttribute('aria-pressed', String(S.showBar));
+    bar.addEventListener('click', () => { store.set('pathviz.bar', !S.showBar); showBar(!S.showBar); });
+
     for (const [id, key] of [['#robotW', 'w'], ['#robotL', 'l']]) {
       const input = $(id);
       input.value = S.robot[key];

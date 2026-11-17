@@ -1,0 +1,4 @@
+{
+  "_note": "Playback only. Seconds the robot takes to get to ~63% of top speed from a standstill (lower = snappier). Everything else is read from Constants.java.",
+  "accelTimeConstant": 0.4
+}

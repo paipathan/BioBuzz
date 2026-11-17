@@ -11,8 +11,8 @@ import dev.nextftc.robot.Telemetry;
 
 public class FlowerBar implements Mechanism {
     public enum State {
-        UP(0.0),
-        DOWN(0.655);
+        UP(0.2),
+        DOWN(0.85);
 
         private final double position;
 

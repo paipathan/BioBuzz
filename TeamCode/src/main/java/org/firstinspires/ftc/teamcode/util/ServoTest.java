@@ -32,6 +32,8 @@ public class ServoTest extends LinearOpMode {
         double[] positions = new double[ports.length];
         Arrays.fill(positions, 0.5);
         boolean[] commanded = new boolean[ports.length];
+        NextMotor.Direction[] directions = new NextMotor.Direction[ports.length];
+        Arrays.fill(directions, NextMotor.Direction.FORWARD);
         String[] errors = new String[ports.length];
 
         int selected = 0;
@@ -42,6 +44,7 @@ public class ServoTest extends LinearOpMode {
         boolean lastY = false;
         boolean lastDpadLeft = false;
         boolean lastDpadRight = false;
+        boolean lastDpadUp = false;
 
         waitForStart();
 
@@ -50,6 +53,14 @@ public class ServoTest extends LinearOpMode {
             if (gamepad1.dpad_left && !lastDpadLeft) selected = (selected - 1 + ports.length) % ports.length;
             lastDpadRight = gamepad1.dpad_right;
             lastDpadLeft = gamepad1.dpad_left;
+
+            boolean flipDirection = gamepad1.dpad_up && !lastDpadUp;
+            lastDpadUp = gamepad1.dpad_up;
+            if (flipDirection) {
+                directions[selected] = directions[selected] == NextMotor.Direction.FORWARD
+                        ? NextMotor.Direction.REVERSE : NextMotor.Direction.FORWARD;
+                if (servos[selected] != null) servos[selected].setDirection(directions[selected]);
+            }
 
             double position = positions[selected];
 
@@ -70,12 +81,12 @@ public class ServoTest extends LinearOpMode {
             position = Math.max(0, Math.min(1, position));
             positions[selected] = position;
 
-            if (gamepad1.x || gamepad1.b || gamepad1.a || stepUp || stepDown) commanded[selected] = true;
+            if (gamepad1.x || gamepad1.b || gamepad1.a || stepUp || stepDown || flipDirection) commanded[selected] = true;
 
             if (commanded[selected]) {
                 try {
                     if (servos[selected] == null) {
-                        servos[selected] = new NextServo(expansion[selected] ? RobotController.expansionHub() : RobotController.controlHub(), ports[selected], 0.001, NextMotor.Direction.FORWARD);
+                        servos[selected] = new NextServo(expansion[selected] ? RobotController.expansionHub() : RobotController.controlHub(), ports[selected], 0.001, directions[selected]);
                     }
                     servos[selected].setPosition(position);
                     errors[selected] = null;
@@ -89,6 +100,7 @@ public class ServoTest extends LinearOpMode {
             telemetry.addData("Hub", expansion[selected] ? "Expansion" : "Control");
             telemetry.addData("Servo port (dpad left/right)", ports[selected]);
             telemetry.addData("Servo position", commanded[selected] ? String.valueOf(position) : "not moved yet");
+            telemetry.addData("Direction (dpad up to flip)", directions[selected]);
             telemetry.addData("Step (Y to toggle)", step);
             if (errors[selected] != null) {
                 telemetry.addLine("Can't drive " + (expansion[selected] ? "expansion" : "control") + " port " + ports[selected] + ": " + errors[selected]);

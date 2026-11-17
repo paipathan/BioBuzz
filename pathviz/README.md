@@ -23,8 +23,8 @@ It understands exactly the shape `TwoTipPaths` uses:
 A file containing anything else (extra members, inline `new Pose(...)`, other calls) opens
 read-only with the reason, so it is never overwritten.
 
-Coordinates are in the drawn alliance's frame (`Constants.Auto.drawnAlliance`); "Show blue side"
-overlays the mirrored path that `Utilities.poseFactory` produces for the other alliance.
+Coordinates are in the drawn alliance's frame (`Constants.Auto.drawnAlliance`); `Utilities.poseFactory`
+mirrors them for the other alliance at runtime, so only one side is drawn.
 
 ## Using it
 
@@ -34,6 +34,8 @@ overlays the mirrored path that `Utilities.poseFactory` produces for the other a
 | Drag | Move a point (`Shift` snaps to whole inches) |
 | Double-click a path | Add a control point there. Pedro paths are Bezier curves through `[start, ...controls, end]`; a path with no controls is a line |
 | Heading handle | Drag the ring on a selected point (`Shift` snaps to 15 degrees) |
+| Smart guides | Dragging or placing a point pulls gently (1.5 in) to the x/y of other points, the field center and the walls, with a pink guide line; hold `Alt` to turn them off |
+| Heading targets | In a selected path's inspector, **Heading targets, Add**: the robot faces that heading by that point along the path, then turns on to the path's end heading. Drag the ghost robot along the path, or its round handle to turn it (`Shift` for 1 degree). Saved in the paths class as `withHeadingTargets(alliance, ..., headingTarget(position, degrees))` |
 | Inspector | Rename, add/remove control points, set heading mode, copy `follow(...)` |
 | `Space` / Play | Plays the selected auto: the paths in the order its routine drives them, with the robot states shown |
 | `Delete` | Remove the selected path or point |

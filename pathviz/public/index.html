@@ -11,20 +11,23 @@
   <header class="top">
     <div class="brand"><strong>Path Editor</strong><span class="muted" id="dir"></span></div>
     <div class="tools">
-      <label class="check"><input type="checkbox" id="ghost"> Show blue side</label>
       <label class="robot">Robot
         <input id="robotW" type="number" min="1" step="0.5" aria-label="Robot width in inches">
         &times;
         <input id="robotL" type="number" min="1" step="0.5" aria-label="Robot length in inches">
         in
       </label>
+      <button id="bar" type="button" aria-pressed="true" title="Show the flower bar sticking out of the back of the robot">Flower bar</button>
+      <button id="panel" type="button" aria-pressed="true">Hide details</button>
       <button id="undo" type="button">Undo</button>
       <button id="redo" type="button">Redo</button>
       <span id="status" class="status" role="status"></span>
     </div>
   </header>
   <main>
-    <aside id="sidebar" aria-label="Files, paths and points"></aside>
+    <aside id="details" aria-label="Path details">
+      <div id="inspector" aria-label="Inspector"></div>
+    </aside>
     <section id="stage">
       <div id="fieldwrap">
         <div id="banner" hidden></div>
@@ -45,7 +48,9 @@
         <select id="seq" aria-label="Auto to play"></select>
       </div>
     </section>
-    <aside id="inspector" aria-label="Inspector"></aside>
+    <aside id="side" aria-label="Routine">
+      <div id="sidebar" aria-label="Routine"></div>
+    </aside>
   </main>
   <script src="app.js"></script>
 </body>

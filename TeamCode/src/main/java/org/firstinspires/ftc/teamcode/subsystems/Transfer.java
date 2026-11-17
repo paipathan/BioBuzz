@@ -14,6 +14,7 @@ public class Transfer implements Mechanism {
     public enum State {
         OFF(0.0, Constants.Transfer.stopperClosedPosition),
         LOAD(1.0, Constants.Transfer.stopperClosedPosition),
+        OPEN(0.0, Constants.Transfer.stopperOpenPosition),
         FEED(1.0, Constants.Transfer.stopperOpenPosition),
         UNJAM(-1.0, Constants.Transfer.stopperClosedPosition);
 
@@ -29,20 +30,16 @@ public class Transfer implements Mechanism {
     private State state = State.OFF;
 
     NextMotor transferMotor1;
-    NextMotor transferMotor2;
     NextServo stopperServo;
 
     public void initialize() {
         if (transferMotor1 == null) {
             transferMotor1 = new NextMotor(RobotController.expansionHub(), Constants.Transfer.transferMotorPort1);
-            transferMotor2 = new NextMotor(RobotController.controlHub(), Constants.Transfer.transferMotorPort2);
         }
         transferMotor1.setDirection(Constants.Transfer.transferMotorDirection1);
-        transferMotor2.setDirection(Constants.Transfer.transferMotorDirection2);
         transferMotor1.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
-        transferMotor2.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
         if (stopperServo == null) {
-            stopperServo = new NextServo(RobotController.expansionHub(), Constants.Transfer.stopperServoPort, Constants.Transfer.stopperServoCacheTolerance, Constants.Transfer.stopperServoDirection);
+            stopperServo = new NextServo(RobotController.controlHub(), Constants.Transfer.stopperServoPort, Constants.Transfer.stopperServoCacheTolerance, Constants.Transfer.stopperServoDirection);
         }
     }
 
@@ -58,8 +55,11 @@ public class Transfer implements Mechanism {
     public void periodic() {
         if (transferMotor1 == null) return;
         transferMotor1.setThrottle(state.power);
-        transferMotor2.setThrottle(state.power);
-        if (stopperServo != null) stopperServo.setPosition(state.stopperPosition);
+        if (stopperServo != null) {
+            stopperServo.setPosition(state.stopperPosition);
+            // Read back what was actually written so a stuck stopper is visible on Panels
+            Telemetry.log("stopper position", stopperServo.getPosition());
+        }
         Telemetry.log("transfer", state);
     }
 }

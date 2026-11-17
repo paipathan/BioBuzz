@@ -53,8 +53,8 @@ public class Robot implements NextRobot {
         Telemetry.addBackend(PanelsTelemetry.INSTANCE.getFtcTelemetry());
         drivetrain.initialize(startPose);
         intake.initialize();
-        if (Constants.Turret.enabled) turret.initialize();
-        if (Constants.Shooter.enabled) shooter.initialize();
+        turret.initialize();
+        shooter.initialize();
         transfer.initialize();
         flowerBar.initialize();
     }
@@ -63,28 +63,26 @@ public class Robot implements NextRobot {
         switch (target) {
             case IDLE:
                 return Groups.sequential(
-                        turret.set(Turret.State.LOCKED),
                         intake.set(Intake.State.OFF),
                         shooter.set(Shooter.State.IDLE),
                         transfer.set(Transfer.State.OFF));
             case INTAKE:
                 return Groups.sequential(
-                        turret.set(Turret.State.LOCKED),
                         intake.set(Intake.State.INTAKE),
-                        shooter.set(Shooter.State.IDLE),
+                        shooter.set(Shooter.State.INTAKE),
                         transfer.set(Transfer.State.LOAD));
             case SHOOT:
                 return Groups.sequential(
-                        turret.set(Turret.State.LOCKED),
                         intake.set(Intake.State.OFF),
                         transfer.set(Transfer.State.OFF),
                         shooter.set(Shooter.State.REV),
-                        Commands.waitUntil(shooter::atSpeed).raceWith(Commands.waitMs(Shooter.SPIN_UP_TIMEOUT_MS)),
+                        Commands.waitUntil(shooter::atSpeed),
+                        transfer.set(Transfer.State.OPEN),
+                        Commands.waitMs(Constants.Transfer.stopperOpenDelayMs),
                         intake.set(Intake.State.INTAKE),
                         transfer.set(Transfer.State.FEED));
             case UNJAM:
                 return Groups.sequential(
-                        turret.set(Turret.State.LOCKED),
                         intake.set(Intake.State.UNJAM),
                         shooter.set(Shooter.State.UNJAM),
                         transfer.set(Transfer.State.UNJAM));
@@ -112,6 +110,11 @@ public class Robot implements NextRobot {
         controller.a().onTrue(drivetrain.resetPose(Constants.Drivetrain.resetPose));
         controller.y().onTrue(flowerBar.toggle());
         new Trigger(() -> gamepad.guide).onTrue(turret.toggleLock());
+        new Trigger(() -> gamepad.dpad_up).onTrue(Commands.instant(() -> ShotCalculator.adjustDefaultRpm(ShotCalculator.RPM_STEP)));
+        new Trigger(() -> gamepad.dpad_down).onTrue(Commands.instant(() -> ShotCalculator.adjustDefaultRpm(-ShotCalculator.RPM_STEP)));
+        // Testing: nudge turret aim 1 degree per press (left = CCW, right = CW).
+        new Trigger(() -> gamepad.dpad_left).onTrue(turret.adjustTrim(1.0));
+        new Trigger(() -> gamepad.dpad_right).onTrue(turret.adjustTrim(-1.0));
 
         drivetrain.drive(gamepad, alliance).schedule();
     }
@@ -130,11 +133,14 @@ public class Robot implements NextRobot {
     @Override
     public void periodic() {
         updateShot();
+        Telemetry.log("default shooter rpm", ShotCalculator.defaultShooterRpm);
     }
 
     public void disabledPeriodic() {
         updateShot();
         drivetrain.periodic();
+        // Mechanism periodics don't run during init, so tick transfer here to close the stopper (motor stays OFF)
+        transfer.periodic();
     }
 
     private void updateShot() {

@@ -20,32 +20,50 @@ public class Shooter implements Mechanism {
 
 
     public enum State {
-        IDLE(false, 0.0),
-        REV(true, 0.0),
-        UNJAM(false, -1.0);
+        IDLE(false, 0.0, 0.0),
+        REV(true, 0.0, 1.0),
+        // Flywheel off; aux motor runs backwards while intaking.
+        INTAKE(false, 0.0, -1.0),
+        UNJAM(false, -1.0, -1.0);
 
         private final boolean holdsSpeed;
         private final double power;
+        private final double auxPower;
 
-        State(boolean holdsSpeed, double power) {
+        State(boolean holdsSpeed, double power, double auxPower) {
             this.holdsSpeed = holdsSpeed;
             this.power = power;
+            this.auxPower = auxPower;
         }
     }
 
     private State state = State.IDLE;
 
     NextMotor shooterMotor;
+    NextMotor shooterAuxMotor;
 
     public void initialize() {
+        if (shooterAuxMotor == null) {
+            shooterAuxMotor = new NextMotor(RobotController.controlHub(), Constants.Shooter.shooterAuxMotorPort);
+        }
+        shooterAuxMotor.setDirection(Constants.Shooter.shooterAuxMotorDirection);
+        shooterAuxMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
         if (shooterMotor == null) {
             shooterMotor = new NextMotor(RobotController.controlHub(), Constants.Shooter.shooterMotorPort, Rotations.of(1.0 / Constants.Shooter.ticksPerRev));
         }
         shooterMotor.setDirection(Constants.Shooter.shooterMotorDirection);
         shooterMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.FLOAT);
-        shooterMotor.getVelocityConstants()
-                .withS(Constants.Shooter.kS).withV(Constants.Shooter.kV).withA(Constants.Shooter.kA)
-                .withP(Constants.Shooter.kP).withI(Constants.Shooter.kI).withD(Constants.Shooter.kD);
+    }
+
+    /**
+     * Same controller as ShooterTune: feedforward (kS + kV * target), plus bang power while more
+     * than bangZoneRpm under the target. Never negative, so over speed it just coasts down.
+     */
+    private double revPower(double target, double rpm) {
+        if (target <= 0) return 0.0;
+        double power = Constants.Shooter.kS + Constants.Shooter.kV * target;
+        if (rpm < target - Constants.Shooter.bangZoneRpm) power += Constants.Shooter.bangPower;
+        return Utilities.clamp(power, 0.0, 1.0);
     }
 
     public Command set(State state) {
@@ -73,14 +91,16 @@ public class Shooter implements Mechanism {
     @Override
     public void periodic() {
         if (shooterMotor == null) return;
+        if (shooterAuxMotor != null) shooterAuxMotor.setThrottle(state.auxPower);
         if (state.holdsSpeed) {
-            shooterMotor.setVelocitySetpoint(RotationsPerMinute.of(targetRpm()));
+            shooterMotor.setThrottle(revPower(targetRpm(), getRpm()));
         } else {
             shooterMotor.setThrottle(state.power);
         }
         Telemetry.log("shooter", state);
         Telemetry.log("shooter rpm", getRpm());
-        Telemetry.log("shooter target rpm", targetRpm());
+        // Always show the RPM a shot would use, even while idle.
+        Telemetry.log("shooter target rpm", ShotCalculator.shooterRpm);
         Telemetry.log("shooter power", shooterMotor.getThrottle());
     }
 }

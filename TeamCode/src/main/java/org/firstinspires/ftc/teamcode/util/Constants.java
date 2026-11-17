@@ -96,16 +96,16 @@ public class Constants {
     }
 
     public static class Transfer {
-        public static final int transferMotorPort1 = 3;
-        public static final int transferMotorPort2 = 1;
+        public static final int transferMotorPort1 = 0;
         public static final NextMotor.Direction transferMotorDirection1 = NextMotor.Direction.FORWARD;
-        public static final NextMotor.Direction transferMotorDirection2 = NextMotor.Direction.REVERSE;
 
-        public static final int stopperServoPort = 0;
+        public static final int stopperServoPort = 5;
         public static final NextMotor.Direction stopperServoDirection = NextMotor.Direction.FORWARD;
         public static final double stopperServoCacheTolerance = 0.001;
-        public static final double stopperOpenPosition = 0.25;
-        public static final double stopperClosedPosition = 0.45;
+        public static final double stopperOpenPosition = 0.2;
+        public static final double stopperClosedPosition = 0.5;
+        // Time for the stopper to swing open before the transfer starts feeding
+        public static final long stopperOpenDelayMs = 150;
     }
 
     public static class FlowerBar {
@@ -115,34 +115,48 @@ public class Constants {
     }
 
     public static class Turret {
-        // Off-robot / unwired: when false, the turret is never initialized and all calls no-op.
-        public static final boolean enabled = false;
         public static final int turretServoPort1 = 1;
         public static final int turretServoPort2 = 2;
-        public static final NextMotor.Direction turretServoDirection1 = NextMotor.Direction.FORWARD;
-        public static final NextMotor.Direction turretServoDirection2 = NextMotor.Direction.FORWARD;
+        public static final NextMotor.Direction turretServoDirection1 = NextMotor.Direction.REVERSE;
+        public static final NextMotor.Direction turretServoDirection2 = NextMotor.Direction.REVERSE;
         public static final double servoCacheTolerance = 0.001;
 
+        // Degrees the servo horn rotates across its full 0 -> 1 position range.
         public static final double servoRangeDegrees = 355;
-        public static final double servoToTurretRatio = 1.35;
-        public static final double rangeDegrees = servoRangeDegrees * servoToTurretRatio;
+        // Turret degrees per servo degree: one servo turn = 1.71 turret turns.
+        public static final double servoToTurretRatio = 1.71;
+        // Servo position where the turret points straight forward (turret angle 0).
+        public static final double zeroPosition = 0.5;
+        // Turret travel limit either side of zero (+/- 180 deg, CCW positive).
+        public static final double limitDegrees = 180;
+        // Flip if a positive (CCW / left) turret angle turns the turret clockwise.
+        public static final boolean reversed = false;
+        // How far past the +/-180 seam the goal must go before the turret swings around the other way.
+        public static final double seamHysteresisDegrees = 10;
         public static final Pose turretOffset = new Pose(0, 0);
     }
 
     public static class Shooter {
-        // Off-robot / unwired: when false, the shooter is never initialized and all calls no-op.
-        public static final boolean enabled = false;
         public static final int shooterMotorPort = 0;
+        // Second motor (formerly transfer motor 2): runs full power while revving.
+        public static final int shooterAuxMotorPort = 1;
+        public static final NextMotor.Direction shooterAuxMotorDirection = NextMotor.Direction.REVERSE;
         public static final NextMotor.Direction shooterMotorDirection = NextMotor.Direction.REVERSE;
         public static final double ticksPerRev = 28.0;
 
-        public static final double kS = 0.05;
-        public static final double kV = 0.00018;
+        public static final double kS = 0.07;
+        public static final double kV = 0.00017;
         public static final double kA = 0.0;
 
+        // kA / kP / kI / kD are not used: the shooter runs bang-bang + feedforward (kS, kV, bang*).
         public static final double kP = 0.0005;
         public static final double kI = 0.0;
         public static final double kD = 0.0;
+
+        // Bang-bang + feedforward (ShooterTune): extra power added while below the setpoint.
+        public static final double bangPower = 1.0;
+        // Bang only fires when more than this far below the setpoint; closer than that, feedforward alone.
+        public static final double bangZoneRpm = 100.0;
     }
 
     public static class Auto {

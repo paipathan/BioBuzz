@@ -69,15 +69,17 @@ main {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 280px;
+  grid-template-columns: clamp(280px, 22vw, 340px) minmax(0, 1fr) clamp(400px, 32vw, 520px);
 }
-aside {
+#side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--panel);
-  overflow-y: auto;
-  padding: 12px 14px 24px;
+  border-left: 1px solid var(--line);
 }
-#sidebar { border-right: 1px solid var(--line); }
-#inspector { border-left: 1px solid var(--line); }
+#sidebar { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 20px 24px; }
+#details { min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 18px 20px 24px; }
 
 #stage {
   position: relative;
@@ -104,8 +106,11 @@ aside {
 }
 #player #scrub { flex: 1; min-width: 80px; accent-color: var(--accent); }
 #player select { width: auto; }
-#time { font-variant-numeric: tabular-nums; white-space: nowrap; }
-#pstate { min-width: 90px; white-space: nowrap; }
+/* Nothing in the player may change size as the readouts change, or the slider would move under
+   the cursor mid-drag: the time has a fixed width and the status sits on a row of its own. */
+#player { flex-wrap: wrap; row-gap: 4px; }
+#time { flex: none; width: 13ch; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pstate { order: 10; flex: 1 0 100%; min-height: 1.4em; line-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #field {
   width: 100%;
   height: 100%;
@@ -248,8 +253,6 @@ input.invalid { border-color: var(--danger); }
   cursor: pointer;
 }
 #field .path.sel .line { stroke: var(--accent); stroke-width: 3.5px; }
-#field .arrow { fill: var(--path); }
-#field .path.sel .arrow { fill: var(--accent); }
 #field .hull { fill: none; stroke: var(--accent); stroke-width: 1px; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; opacity: 0.7; }
 #field .label {
   font: 2.7px system-ui, sans-serif;
@@ -263,28 +266,101 @@ input.invalid { border-color: var(--danger); }
 #field .pt { cursor: grab; }
 #field .pt:active { cursor: grabbing; }
 #field .pt .dot { fill: var(--path); stroke: var(--halo); stroke-width: 0.5px; }
-#field .pt .tick { stroke: var(--path); stroke-width: 1.5px; vector-effect: non-scaling-stroke; stroke-linecap: round; }
 #field .pt.control .dot { fill: var(--panel); stroke: var(--path); stroke-width: 0.5px; }
 #field .pt.sel .dot { fill: var(--accent); }
 #field .pt.sel.control .dot { fill: var(--panel); stroke: var(--accent); stroke-width: 0.7px; }
-#field .pt.sel .tick { stroke: var(--accent); }
 #field .pt .grab { fill: transparent; }
 #field .handle-line { stroke: var(--accent); stroke-width: 1px; vector-effect: non-scaling-stroke; }
 #field .handle { fill: var(--panel); stroke: var(--accent); stroke-width: 0.7px; cursor: grab; }
 #field .robot-box { fill: var(--accent); fill-opacity: 0.1; stroke: var(--accent); stroke-width: 1px; vector-effect: non-scaling-stroke; pointer-events: none; }
 #field .robot-box.play { fill-opacity: 0.18; stroke-width: 1.5px; }
-#field .robot-front { stroke: var(--accent); stroke-width: 2px; vector-effect: non-scaling-stroke; pointer-events: none; }
+#field .robot-nose { fill: var(--accent); pointer-events: none; }
+#field .robot-bar { fill: var(--accent); fill-opacity: 0.05; stroke: var(--accent); stroke-opacity: 0.55; stroke-width: 1px; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; pointer-events: none; }
+#bar[aria-pressed="false"] { opacity: 0.55; }
+#field .robot-front { stroke: var(--accent); stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; }
+#field .robot-box.target { fill: #e0359b; fill-opacity: 0.08; stroke: #e0359b; stroke-dasharray: 4 3; }
+#field .hint .handle { stroke: #e0359b; cursor: grab; }
+#field .hint .handle-line { stroke: #e0359b; }
+#field .htarget-grab { fill: transparent; cursor: grab; }
+#field .htarget-dot { fill: #e0359b; stroke: var(--panel); stroke-width: 0.6px; }
+#field .guide { stroke: #e0359b; stroke-width: 1px; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; pointer-events: none; }
 #field .preview { stroke: var(--accent); stroke-width: 1.5px; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; pointer-events: none; }
-#field .ghost .line { stroke: var(--ghost); opacity: 0.45; stroke-width: 2px; }
-#field .ghost .dot { fill: var(--ghost); opacity: 0.5; }
-#field .ghost .arrow { fill: var(--ghost); opacity: 0.5; }
 
 @media (max-width: 960px) {
   body { height: auto; min-height: 100%; }
   main { grid-template-columns: 1fr; }
-  #sidebar, #inspector { border: 0; border-top: 1px solid var(--line); }
+  #side { border-left: 0; border-top: 1px solid var(--line); }
+  #details { border-right: 0; border-top: 1px solid var(--line); overflow: visible; order: 3; }
+  #stage { order: 1; }
+  #side { order: 2; }
+  #sidebar { overflow: visible; flex: none; }
   #fieldwrap { height: 100vw; padding: 8px; }
   #player { flex-wrap: wrap; }
   #readout { left: 12px; bottom: 12px; }
   #hint { display: none; }
 }
+
+/* routine */
+.steps .step-main { display: flex; flex-direction: column; align-items: flex-start; text-align: left; min-width: 0; }
+.steps .step-main .meta { font-size: 11px; }
+.steps .step-cmd { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.steps .step-cmd select { min-width: 0; flex: 1; }
+.steps .secs { display: inline-flex; align-items: center; gap: 3px; }
+.steps .secs input { width: 50px; }
+.add-step { margin-top: 8px; }
+.event { margin-bottom: 10px; display: grid; gap: 4px; }
+.event-head { display: flex; align-items: center; gap: 6px; }
+.event-head input { width: 56px; }
+.event-head button { margin-left: auto; }
+.section-head.spaced { margin-top: 14px; }
+#field .zone { fill: none; stroke: var(--accent); stroke-width: 7px; opacity: 0.35; vector-effect: non-scaling-stroke; stroke-linecap: butt; }
+#field .zone-label { fill: var(--accent); }
+#field .zone-end { cursor: ew-resize; }
+#field .zone-end .cap { fill: var(--accent); }
+#field .marker { cursor: grab; }
+#field .marker .diamond { fill: var(--panel); stroke: var(--accent); stroke-width: 0.7px; }
+#field .grab { fill: transparent; }
+
+/* inspector hidden */
+main.no-inspector { grid-template-columns: minmax(0, 1fr) clamp(400px, 32vw, 520px); }
+main.no-inspector #details { display: none; }
+
+
+/* routine cards */
+.list.steps { display: grid; gap: 6px; }
+.list.steps li {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px 7px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: default;
+}
+.list.steps li:hover { background: var(--panel); border-color: var(--muted); }
+.list.steps li.movable { cursor: grab; }
+.list.steps li.sel { background: var(--accent-soft); border-color: var(--accent); color: inherit; }
+.list.steps.reordering { user-select: none; }
+.list.steps li.lifted { box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2); transform: scale(1.02); border-color: var(--accent); cursor: grabbing; }
+.list.steps li.step-gap { visibility: hidden; }
+
+/* routine: the main working area, so it gets room */
+#sidebar .section-head { font-size: 12px; margin-bottom: 10px; }
+#sidebar .section { margin-bottom: 24px; }
+#sidebar .list.steps { gap: 10px; }
+#sidebar .list.steps li { padding: 14px 14px 14px 18px; border-radius: 12px; gap: 12px; font-size: 15px; }
+#sidebar .steps .step-main { font-size: 16px; font-weight: 600; gap: 3px; }
+#sidebar .steps .step-main .meta { font-size: 13px; font-weight: 400; }
+#sidebar .steps .step-cmd { gap: 10px; }
+#sidebar .steps select, #sidebar .steps input { height: 40px; font-size: 15px; padding: 4px 12px; border-radius: 8px; }
+#sidebar .steps .secs { gap: 6px; }
+#sidebar .steps .secs input { width: 84px; }
+#sidebar .steps .small { width: 34px; height: 34px; padding: 0; font-size: 20px; line-height: 1; border-radius: 8px; }
+#sidebar .add-step { margin-top: 14px; }
+#sidebar .add-step select { height: 44px; font-size: 15px; width: 100%; border-radius: 10px; }
+#sidebar .file-row select, #sidebar .file-row button, #sidebar .new-file input, #sidebar .new-file button { height: 38px; font-size: 14px; }
+#sidebar .section-head .small { height: 28px; padding: 0 12px; font-size: 12px; }
+#sidebar .empty { padding: 10px 0; }

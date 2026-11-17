@@ -18,6 +18,8 @@ import static org.firstinspires.ftc.teamcode.util.PathEvents.headingTarget;
 import static org.firstinspires.ftc.teamcode.util.PathEvents.withHeadingTargets;
 import org.firstinspires.ftc.teamcode.subsystems.FlowerBar;
 import com.pedropathing.ivy.commands.Commands;
+import static org.firstinspires.ftc.teamcode.util.PathEvents.follow;
+import static org.firstinspires.ftc.teamcode.util.PathEvents.at;
 
 public abstract class TwoTip extends NextOpMode {
     private final Robot robot;
@@ -37,9 +39,8 @@ public abstract class TwoTip extends NextOpMode {
                 robot.flowerBar.set(FlowerBar.State.UP),
                 robot.drivetrain.follow(paths.path1()),
                 Commands.waitMs(1000),
-                robot.drivetrain.follow(paths.path2()),
+                follow(robot, paths.path2(), at(0.5, robot.flowerBar.set(FlowerBar.State.DOWN))),
                 Commands.waitMs(1000),
-                robot.flowerBar.set(FlowerBar.State.DOWN),
                 robot.drivetrain.follow(paths.path3()),
                 Commands.waitMs(1000),
                 robot.drivetrain.follow(paths.path4()),
