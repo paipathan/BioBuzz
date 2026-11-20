@@ -40,21 +40,34 @@ public class Constants {
 
     public static class Drivetrain {
         public static final Pose startPose = new Pose(0, 0, 0);
-        public static final Pose resetPose = new Pose(9, 9, Math.toRadians(90));
+        // Drawn for red (degrees); Utilities.poseFactory mirrors it for blue.
+        public static final double resetX = 8.5;
+        public static final double resetY = 58.5;
+        public static final double resetHeadingDeg = 0;
 
         public static final double slowSpeed = 0.4;
 
-        public static final MecanumConfig mecanumConfig = new MecanumConfig(c -> {
+        // Teleop heading assist (intaking with the flower bar down). Locks the nearest multiple of
+        // 90 deg if within snapWindowDeg of it, otherwise the current heading, and holds it until
+        // the driver turns.
+        public static class HeadingAssist {
+            public static final double snapWindowDeg = 25;
+            public static final double kP = 1.5;            // turn power per radian of error
+            public static final double maxTurn = 0.6;
+            public static final double toleranceDeg = 1;
+            public static final double stickDeadband = 0.05;
+        }
+
+        public static MecanumConfig mecanumConfig = new MecanumConfig(c -> {
             c.frontLeftName.set("fl");
             c.frontRightName.set("fr");
             c.backLeftName.set("bl");
             c.backRightName.set("br");
-            c.frontLeftDirection.set(DcMotorSimple.Direction.REVERSE);
+            c.frontLeftDirection.set(DcMotorSimple.Direction.FORWARD);
             c.frontRightDirection.set(DcMotorSimple.Direction.FORWARD);
             c.backLeftDirection.set(DcMotorSimple.Direction.REVERSE);
             c.backRightDirection.set(DcMotorSimple.Direction.FORWARD);
         });
-
         public static final PinpointConfig pinpointConfig = new PinpointConfig(c -> {
             c.name.set("pinpoint");
             c.podType.set(GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD);
@@ -96,9 +109,11 @@ public class Constants {
     }
 
     public static class Transfer {
+        // Control Hub motor port 0
         public static final int transferMotorPort1 = 0;
         public static final NextMotor.Direction transferMotorDirection1 = NextMotor.Direction.FORWARD;
 
+        // Control Hub servo port 5
         public static final int stopperServoPort = 5;
         public static final NextMotor.Direction stopperServoDirection = NextMotor.Direction.FORWARD;
         public static final double stopperServoCacheTolerance = 0.001;
@@ -133,12 +148,17 @@ public class Constants {
         public static final boolean reversed = false;
         // How far past the +/-180 seam the goal must go before the turret swings around the other way.
         public static final double seamHysteresisDegrees = 10;
-        public static final Pose turretOffset = new Pose(0, 0);
+        // Turret axis relative to the robot center (drive wheelbase center), inches, robot frame:
+        // +x = forward (the end opposite the intake), +y = robot left.
+        // From the CAD (Drivetrain Assembly): turret bearing axis at CAD X = -1.105, Y = 0.000 with the
+        // wheelbase center at the CAD origin. CAD +X points at the intake, so the turret is 1.1" forward.
+        public static final Pose turretOffset = new Pose(1.1, 0);
     }
 
     public static class Shooter {
+        // Expansion Hub motor port 0
         public static final int shooterMotorPort = 0;
-        // Second motor (formerly transfer motor 2): runs full power while revving.
+        // Control Hub motor port 1. Second motor: runs full power while revving.
         public static final int shooterAuxMotorPort = 1;
         public static final NextMotor.Direction shooterAuxMotorDirection = NextMotor.Direction.REVERSE;
         public static final NextMotor.Direction shooterMotorDirection = NextMotor.Direction.REVERSE;
@@ -157,6 +177,11 @@ public class Constants {
         public static final double bangPower = 1.0;
         // Bang only fires when more than this far below the setpoint; closer than that, feedforward alone.
         public static final double bangZoneRpm = 100.0;
+
+        // Fixed shot speed (dpad up/down nudges it 15 RPM at a time during a match).
+        public static final double shotRpm = 3000;
+        // Flywheel speed while the robot is idle.
+        public static final double idleRpm = 1500;
     }
 
     public static class Auto {
@@ -168,8 +193,39 @@ public class Constants {
         public static final double eventLeadSeconds = 0.25;
     }
 
+    public static class LutTuner {
+        public static final double rpmStep = 20;
+
+        // Spots to shoot from, drawn for red (mirrored for blue), roughly every 6 in of goal distance
+        // from 24 to 72 in. All sit below y = 72, so they aim at the low goal. Edit freely: saved entries
+        // keep the distance the robot actually measured, so the LUT stays valid if a spot moves.
+        public static final double[][] samplePoses = {
+                {35.0, 60.8},  // 24 in
+                {37.8, 39.6},  // 30 in
+                {59.0, 24.8},  // 36 in
+                {17.0, 60.8},  // 42 in
+                {25.1, 26.9},  // 48 in
+                {20.8, 22.6},  // 54 in
+                {16.6, 18.4},  // 60 in
+                {12.3, 14.1},  // 66 in
+                {8.1, 9.9},    // 72 in
+        };
+    }
+
     public static class ShotCalculator {
         public static final double goalSplitY = 72;
+
+        // false = fixed Constants.Shooter.shotRpm; true = RPM from the distance LUT below.
+        public static final boolean useLut = false;
+
+        // {goal distance (in), shooter RPM}, sorted by distance. From the LUT tuner, 2026-11-17
+        // (tuning/shooter_lut.csv). Interpolated linearly; held flat outside 29-45 in.
+        // Only used when useLut is true.
+        public static final double[][] lut = {
+                {29.17, 2990},
+                {36.52, 2950},
+                {45.41, 3230},
+        };
 
         public static final Pose blueGoalLow = new Pose(85.4, 55.5);
         public static final Pose blueGoalHigh = new Pose(85.4, 82.6);

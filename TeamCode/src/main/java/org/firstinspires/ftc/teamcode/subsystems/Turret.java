@@ -9,7 +9,6 @@ import org.firstinspires.ftc.teamcode.util.Utilities;
 import dev.nextftc.hardware.RobotController;
 import dev.nextftc.hardware.actuators.NextServo;
 import dev.nextftc.robot.Mechanism;
-import dev.nextftc.robot.Telemetry;
 
 public class Turret implements Mechanism {
     private State state = State.TRACKING;
@@ -99,11 +98,5 @@ public class Turret implements Mechanism {
                 updateTurret(0);
                 break;
         }
-        Telemetry.log("turret", state);
-        Telemetry.log("turret target (deg)", Math.toDegrees(ShotCalculator.turretAngle));
-        Telemetry.log("turret angle (deg)", Math.toDegrees(angle));
-        Telemetry.log("turret trim (deg)", trimDegrees);
-        Telemetry.log("turret servo position", toPosition(angle));
-        Telemetry.log("goal distance", ShotCalculator.distance);
     }
 }

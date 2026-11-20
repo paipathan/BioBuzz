@@ -12,7 +12,6 @@ import org.firstinspires.ftc.teamcode.util.Utilities;
 import dev.nextftc.hardware.RobotController;
 import dev.nextftc.hardware.actuators.NextMotor;
 import dev.nextftc.robot.Mechanism;
-import dev.nextftc.robot.Telemetry;
 
 public class Shooter implements Mechanism {
     public static final int SPIN_UP_TIMEOUT_MS = 750;
@@ -20,7 +19,8 @@ public class Shooter implements Mechanism {
 
 
     public enum State {
-        IDLE(false, 0.0, 0.0),
+        // Holds ShotCalculator.idleRpm(), just under every shot, so revving only ever speeds up.
+        IDLE(true, 0.0, 0.0),
         REV(true, 0.0, 1.0),
         // Flywheel off; aux motor runs backwards while intaking.
         INTAKE(false, 0.0, -1.0),
@@ -49,10 +49,13 @@ public class Shooter implements Mechanism {
         shooterAuxMotor.setDirection(Constants.Shooter.shooterAuxMotorDirection);
         shooterAuxMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
         if (shooterMotor == null) {
-            shooterMotor = new NextMotor(RobotController.controlHub(), Constants.Shooter.shooterMotorPort, Rotations.of(1.0 / Constants.Shooter.ticksPerRev));
+            shooterMotor = new NextMotor(RobotController.expansionHub(), Constants.Shooter.shooterMotorPort, Rotations.of(1.0 / Constants.Shooter.ticksPerRev));
         }
         shooterMotor.setDirection(Constants.Shooter.shooterMotorDirection);
         shooterMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.FLOAT);
+        Utilities.syncStoppedMotor(shooterAuxMotor);
+        Utilities.syncStoppedMotor(shooterMotor);
+        state = State.IDLE;
     }
 
     /**
@@ -80,7 +83,14 @@ public class Shooter implements Mechanism {
     }
 
     public double targetRpm() {
-        return state.holdsSpeed ? ShotCalculator.shooterRpm : 0.0;
+        switch (state) {
+            case REV:
+                return ShotCalculator.shooterRpm;
+            case IDLE:
+                return ShotCalculator.idleRpm();
+            default:
+                return 0.0;
+        }
     }
 
     public boolean atSpeed() {
@@ -97,10 +107,5 @@ public class Shooter implements Mechanism {
         } else {
             shooterMotor.setThrottle(state.power);
         }
-        Telemetry.log("shooter", state);
-        Telemetry.log("shooter rpm", getRpm());
-        // Always show the RPM a shot would use, even while idle.
-        Telemetry.log("shooter target rpm", ShotCalculator.shooterRpm);
-        Telemetry.log("shooter power", shooterMotor.getThrottle());
     }
 }

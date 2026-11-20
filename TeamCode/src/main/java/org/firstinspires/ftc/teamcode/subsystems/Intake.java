@@ -3,6 +3,7 @@ package org.firstinspires.ftc.teamcode.subsystems;
 import com.pedropathing.ivy.Command;
 
 import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.Utilities;
 
 import dev.nextftc.hardware.actuators.NextMotor;
 import dev.nextftc.robot.Mechanism;
@@ -30,6 +31,8 @@ public class Intake implements Mechanism {
         }
         intakeMotor.setDirection(NextMotor.Direction.FORWARD);
         intakeMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.FLOAT);
+        Utilities.syncStoppedMotor(intakeMotor);
+        state = State.OFF;
     }
 
     public Command set(State state) {

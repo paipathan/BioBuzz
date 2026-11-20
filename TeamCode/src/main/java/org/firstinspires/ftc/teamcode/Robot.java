@@ -19,6 +19,7 @@ import org.firstinspires.ftc.teamcode.subsystems.Turret;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Constants;
 import org.firstinspires.ftc.teamcode.util.ShotCalculator;
+import org.firstinspires.ftc.teamcode.util.Utilities;
 
 import java.util.Arrays;
 import java.util.LinkedHashSet;
@@ -50,6 +51,9 @@ public class Robot implements NextRobot {
 
     public void initialize(Pose startPose, Alliance alliance) {
         this.alliance = alliance;
+        // This Robot object outlives each opmode, so start every opmode from IDLE.
+        state = State.IDLE;
+        ShotCalculator.reset();
         Telemetry.addBackend(PanelsTelemetry.INSTANCE.getFtcTelemetry());
         drivetrain.initialize(startPose);
         intake.initialize();
@@ -92,6 +96,15 @@ public class Robot implements NextRobot {
     }
 
     public void configureBindings(Gamepad gamepad) {
+        configureBindings(gamepad, ShotCalculator.RPM_STEP, true);
+    }
+
+    /**
+     * Driver controls shared by teleop and the LUT tuner.
+     * @param rpmStep how much dpad up/down changes the shooter RPM
+     * @param dpadTrimsTurret false frees dpad left/right for the caller
+     */
+    public void configureBindings(Gamepad gamepad, double rpmStep, boolean dpadTrimsTurret) {
         CommandGamepad controller = new CommandGamepad(gamepad);
 
         controller.leftBumper()
@@ -107,16 +120,23 @@ public class Robot implements NextRobot {
                 .onFalse(set(State.IDLE));
 
         controller.x().onTrue(drivetrain.resetFieldCentric(alliance));
-        controller.a().onTrue(drivetrain.resetPose(Constants.Drivetrain.resetPose));
+        controller.a().onTrue(drivetrain.resetPose(Utilities.resetPose(alliance)));
         controller.y().onTrue(flowerBar.toggle());
         new Trigger(() -> gamepad.guide).onTrue(turret.toggleLock());
-        new Trigger(() -> gamepad.dpad_up).onTrue(Commands.instant(() -> ShotCalculator.adjustDefaultRpm(ShotCalculator.RPM_STEP)));
-        new Trigger(() -> gamepad.dpad_down).onTrue(Commands.instant(() -> ShotCalculator.adjustDefaultRpm(-ShotCalculator.RPM_STEP)));
-        // Testing: nudge turret aim 1 degree per press (left = CCW, right = CW).
-        new Trigger(() -> gamepad.dpad_left).onTrue(turret.adjustTrim(1.0));
-        new Trigger(() -> gamepad.dpad_right).onTrue(turret.adjustTrim(-1.0));
+        new Trigger(() -> gamepad.dpad_up).onTrue(Commands.instant(() -> ShotCalculator.adjustRpm(rpmStep)));
+        new Trigger(() -> gamepad.dpad_down).onTrue(Commands.instant(() -> ShotCalculator.adjustRpm(-rpmStep)));
+        if (dpadTrimsTurret) {
+            // Testing: nudge turret aim 1 degree per press (left = CCW, right = CW).
+            new Trigger(() -> gamepad.dpad_left).onTrue(turret.adjustTrim(1.0));
+            new Trigger(() -> gamepad.dpad_right).onTrue(turret.adjustTrim(-1.0));
+        }
 
-        drivetrain.drive(gamepad, alliance).schedule();
+        drivetrain.drive(gamepad, alliance, this::headingAssistActive).schedule();
+    }
+
+    /** Teleop only (auto never schedules drive): straighten up while intaking off the floor. */
+    private boolean headingAssistActive() {
+        return state == State.INTAKE && flowerBar.getState() == FlowerBar.State.DOWN;
     }
 
     public State getState() {
@@ -133,7 +153,7 @@ public class Robot implements NextRobot {
     @Override
     public void periodic() {
         updateShot();
-        Telemetry.log("default shooter rpm", ShotCalculator.defaultShooterRpm);
+        logTelemetry();
     }
 
     public void disabledPeriodic() {
@@ -141,6 +161,17 @@ public class Robot implements NextRobot {
         drivetrain.periodic();
         // Mechanism periodics don't run during init, so tick transfer here to close the stopper (motor stays OFF)
         transfer.periodic();
+        logTelemetry();
+    }
+
+    private void logTelemetry() {
+        Telemetry.log("state", state);
+        // Shot RPM even while idle, so the LUT target is always visible
+        String offset = ShotCalculator.useLut && ShotCalculator.rpmOffset != 0
+                ? String.format(java.util.Locale.US, " (%+.0f)", ShotCalculator.rpmOffset) : "";
+        Telemetry.log("target rpm", String.format(java.util.Locale.US, "%.0f", ShotCalculator.shooterRpm) + offset);
+        Telemetry.log("current rpm", shooter.getRpm());
+        Telemetry.log("goal distance (in)", ShotCalculator.distance);
     }
 
     private void updateShot() {

@@ -1,0 +1,23 @@
+# Python env (recreate with: uv venv .venv && uv pip install -r requirements.txt)
+.venv/
+
+# Robot CAD: STEP export + caches are big and regenerable
+robot/source/
+robot/index/robot.glb
+robot/designs/out/*.glb
+
+# Blender autosaves
+*.blend1
+robot/index/robot.blend
+
+# Launcher V5 source STL (copied from Onshape export)
+launcher_v5/source/
+
+# Transfer: Onshape STL export + big scratch meshes (regenerate with tools/prepare.py)
+transfer/source/
+transfer/out/_*
+transfer/out/*.npy
+
+# Python bytecode
+__pycache__/
+*.pyc

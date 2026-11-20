@@ -42,7 +42,7 @@ public class ShooterTune extends LinearOpMode {
 
     @Override
     public void runOpMode() {
-        NextMotor motor = new NextMotor(RobotController.controlHub(), Constants.Shooter.shooterMotorPort, Rotations.of(1.0 / Constants.Shooter.ticksPerRev));
+        NextMotor motor = new NextMotor(RobotController.expansionHub(), Constants.Shooter.shooterMotorPort, Rotations.of(1.0 / Constants.Shooter.ticksPerRev));
         motor.setDirection(Constants.Shooter.shooterMotorDirection);
         motor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.FLOAT);
 
@@ -56,7 +56,7 @@ public class ShooterTune extends LinearOpMode {
         auxMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
 
         // Transfer + stopper, so balls can be fed through to measure RPM drop.
-        NextMotor transferMotor = new NextMotor(RobotController.expansionHub(), Constants.Transfer.transferMotorPort1);
+        NextMotor transferMotor = new NextMotor(RobotController.controlHub(), Constants.Transfer.transferMotorPort1);
         transferMotor.setDirection(Constants.Transfer.transferMotorDirection1);
         transferMotor.setZeroPowerBehavior(NextMotor.ZeroPowerBehavior.BRAKE);
         NextServo stopperServo = new NextServo(RobotController.controlHub(), Constants.Transfer.stopperServoPort, Constants.Transfer.stopperServoCacheTolerance, Constants.Transfer.stopperServoDirection);

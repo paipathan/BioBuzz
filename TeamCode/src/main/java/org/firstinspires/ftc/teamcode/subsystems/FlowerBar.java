@@ -7,7 +7,6 @@ import org.firstinspires.ftc.teamcode.util.Constants;
 import dev.nextftc.hardware.RobotController;
 import dev.nextftc.hardware.actuators.NextServo;
 import dev.nextftc.robot.Mechanism;
-import dev.nextftc.robot.Telemetry;
 
 public class FlowerBar implements Mechanism {
     public enum State {
@@ -45,6 +44,5 @@ public class FlowerBar implements Mechanism {
     public void periodic() {
         if (flowerBarServo == null) return;
         flowerBarServo.setPosition(state.position);
-        Telemetry.log("flower bar", state);
     }
 }
