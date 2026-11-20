@@ -14,20 +14,16 @@ import org.firstinspires.ftc.teamcode.util.Utilities;
 import dev.nextftc.robot.opmode.BulkReadHook;
 import dev.nextftc.robot.opmode.NextAutonomous;
 import dev.nextftc.robot.opmode.NextOpMode;
-import static org.firstinspires.ftc.teamcode.util.PathEvents.headingTarget;
-import static org.firstinspires.ftc.teamcode.util.PathEvents.withHeadingTargets;
-import static org.firstinspires.ftc.teamcode.util.PathEvents.follow;
-import static org.firstinspires.ftc.teamcode.util.PathEvents.at;
 import org.firstinspires.ftc.teamcode.subsystems.FlowerBar;
 
-public abstract class TestAuto extends NextOpMode {
+public abstract class ParkRight extends NextOpMode {
     private final Robot robot;
-    private final TestAutoPaths paths;
+    private final ParkRightPaths paths;
 
-    protected TestAuto(Robot robot, Alliance alliance) {
+    protected ParkRight(Robot robot, Alliance alliance) {
         super(robot, BulkReadHook.INSTANCE);
         this.robot = robot;
-        this.paths = new TestAutoPaths(alliance);
+        this.paths = new ParkRightPaths(alliance);
 
         robot.initialize(paths.start, alliance);
     }
@@ -36,7 +32,7 @@ public abstract class TestAuto extends NextOpMode {
         return Groups.sequential(
                 robot.set(Robot.State.IDLE),
                 robot.flowerBar.set(FlowerBar.State.UP),
-                follow(robot, paths.path1(), at(0.5, robot.flowerBar.set(FlowerBar.State.DOWN)), at(1, robot.flowerBar.set(FlowerBar.State.UP)))
+                robot.drivetrain.follow(paths.path1())
         );
     }
 
@@ -46,30 +42,30 @@ public abstract class TestAuto extends NextOpMode {
     @Override
     public void start() { routine().schedule(); }
 
-    @NextAutonomous(name = "Test Auto Red", preselectTeleop = "Red Teleop")
-    public static class TestAutoRed extends TestAuto {
-        public TestAutoRed(Robot robot) {
+    @NextAutonomous(name = "Park Right Red", preselectTeleop = "Red Teleop")
+    public static class ParkRightRed extends ParkRight {
+        public ParkRightRed(Robot robot) {
             super(robot, Alliance.RED);
         }
     }
 
-    @NextAutonomous(name = "Test Auto Blue", preselectTeleop = "Blue Teleop")
-    public static class TestAutoBlue extends TestAuto {
-        public TestAutoBlue(Robot robot) {
+    @NextAutonomous(name = "Park Right Blue", preselectTeleop = "Blue Teleop")
+    public static class ParkRightBlue extends ParkRight {
+        public ParkRightBlue(Robot robot) {
             super(robot, Alliance.BLUE);
         }
     }
 
-    public static class TestAutoPaths {
+    public static class ParkRightPaths {
 
         public final Pose start;
         private final Pose point1;
 
-        public TestAutoPaths(Alliance alliance) {
+        public ParkRightPaths(Alliance alliance) {
             PoseFactory poseFactory = Utilities.poseFactory(alliance);
 
-            start = poseFactory.of(23.8, 23.4, 90);
-            point1 = poseFactory.of(23.8, 119.9, 270);
+            start = poseFactory.of(6.8, 80.6, 90);
+            point1 = poseFactory.of(6.8, 92.2, 90);
         }
 
         public Path path1() {

@@ -15,20 +15,22 @@ import dev.nextftc.robot.opmode.BulkReadHook;
 import dev.nextftc.robot.opmode.NextAutonomous;
 import dev.nextftc.robot.opmode.NextOpMode;
 
-public abstract class Lala extends NextOpMode {
+public abstract class ParkLeft extends NextOpMode {
     private final Robot robot;
-    private final LalaPaths paths;
+    private final ParkLeftPaths paths;
 
-    protected Lala(Robot robot, Alliance alliance) {
+    protected ParkLeft(Robot robot, Alliance alliance) {
         super(robot, BulkReadHook.INSTANCE);
         this.robot = robot;
-        this.paths = new LalaPaths(alliance);
+        this.paths = new ParkLeftPaths(alliance);
 
         robot.initialize(paths.start, alliance);
     }
 
     private Command routine() {
-        return Groups.sequential();
+        return Groups.sequential(
+                robot.drivetrain.follow(paths.path1())
+        );
     }
 
     @Override
@@ -37,28 +39,34 @@ public abstract class Lala extends NextOpMode {
     @Override
     public void start() { routine().schedule(); }
 
-    @NextAutonomous(name = "Lala Red", preselectTeleop = "Red Teleop")
-    public static class LalaRed extends Lala {
-        public LalaRed(Robot robot) {
+    @NextAutonomous(name = "Park Left Red", preselectTeleop = "Red Teleop")
+    public static class ParkLeftRed extends ParkLeft {
+        public ParkLeftRed(Robot robot) {
             super(robot, Alliance.RED);
         }
     }
 
-    @NextAutonomous(name = "Lala Blue", preselectTeleop = "Blue Teleop")
-    public static class LalaBlue extends Lala {
-        public LalaBlue(Robot robot) {
+    @NextAutonomous(name = "Park Left Blue", preselectTeleop = "Blue Teleop")
+    public static class ParkLeftBlue extends ParkLeft {
+        public ParkLeftBlue(Robot robot) {
             super(robot, Alliance.BLUE);
         }
     }
 
-    public static class LalaPaths {
+    public static class ParkLeftPaths {
 
         public final Pose start;
+        private final Pose point1;
 
-        public LalaPaths(Alliance alliance) {
+        public ParkLeftPaths(Alliance alliance) {
             PoseFactory poseFactory = Utilities.poseFactory(alliance);
 
-            start = poseFactory.of(8.5, 58.5, 0);
+            start = poseFactory.of(6.8, 135.3, 270);
+            point1 = poseFactory.of(6.8, 123.3, 270);
+        }
+
+        public Path path1() {
+            return Paths.line(start, point1).linear(start, point1);
         }
     }
 }
