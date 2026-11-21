@@ -8,6 +8,7 @@ import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
 
 import org.firstinspires.ftc.teamcode.Robot;
+import org.firstinspires.ftc.teamcode.teleop.Tele;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Utilities;
 
@@ -27,7 +28,7 @@ public abstract class WaitPreloadTopLeft extends NextOpMode {
         this.robot = robot;
         this.paths = new WaitPreloadTopLeftPaths(alliance);
 
-        robot.initialize(paths.start, alliance);
+        robot.initializeAuto(paths.start, alliance);
     }
 
     private Command routine() {
@@ -35,6 +36,8 @@ public abstract class WaitPreloadTopLeft extends NextOpMode {
                 Commands.waitMs(15000),
                 robot.drivetrain.follow(paths.path1()),
                 robot.set(Robot.State.SHOOT),
+                Commands.waitMs(3500),
+                robot.set(Robot.State.IDLE),
                 robot.drivetrain.follow(paths.path2())
         );
     }
@@ -45,14 +48,14 @@ public abstract class WaitPreloadTopLeft extends NextOpMode {
     @Override
     public void start() { routine().schedule(); }
 
-    @NextAutonomous(name = "Wait Preload Top Left Red", preselectTeleop = "Red Teleop")
+    @NextAutonomous(name = "Wait Preload Top Left Red", preselectTeleop = Tele.RED)
     public static class WaitPreloadTopLeftRed extends WaitPreloadTopLeft {
         public WaitPreloadTopLeftRed(Robot robot) {
             super(robot, Alliance.RED);
         }
     }
 
-    @NextAutonomous(name = "Wait Preload Top Left Blue", preselectTeleop = "Blue Teleop")
+    @NextAutonomous(name = "Wait Preload Top Left Blue", preselectTeleop = Tele.BLUE)
     public static class WaitPreloadTopLeftBlue extends WaitPreloadTopLeft {
         public WaitPreloadTopLeftBlue(Robot robot) {
             super(robot, Alliance.BLUE);

@@ -18,6 +18,7 @@ import org.firstinspires.ftc.teamcode.subsystems.Transfer;
 import org.firstinspires.ftc.teamcode.subsystems.Turret;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Constants;
+import org.firstinspires.ftc.teamcode.util.PoseHandoff;
 import org.firstinspires.ftc.teamcode.util.ShotCalculator;
 import org.firstinspires.ftc.teamcode.util.Utilities;
 
@@ -48,9 +49,29 @@ public class Robot implements NextRobot {
 
     private State state = State.IDLE;
     private Alliance alliance = Alliance.RED;
+    private boolean savePose = false; // keep PoseHandoff updated for the next teleop
+
+    /** Auto: start at the path start and keep handing the pose off for teleop. */
+    public void initializeAuto(Pose startPose, Alliance alliance) {
+        initialize(startPose, alliance);
+        savePose = true;
+        PoseHandoff.save(startPose, alliance);
+    }
+
+    /**
+     * Teleop: start where the last auto (or teleop) of this alliance left off, else the default
+     * start pose. Returns whether a handed-off pose was used.
+     */
+    public boolean initializeTeleop(Alliance alliance) {
+        Pose handoff = PoseHandoff.get(alliance);
+        initialize(handoff != null ? handoff : Constants.Drivetrain.startPose, alliance);
+        savePose = true;
+        return handoff != null;
+    }
 
     public void initialize(Pose startPose, Alliance alliance) {
         this.alliance = alliance;
+        savePose = false;
         // This Robot object outlives each opmode, so start every opmode from IDLE.
         state = State.IDLE;
         ShotCalculator.reset();
@@ -120,7 +141,7 @@ public class Robot implements NextRobot {
                 .onFalse(set(State.IDLE));
 
         controller.x().onTrue(drivetrain.resetFieldCentric(alliance));
-        controller.a().onTrue(drivetrain.resetPose(Utilities.resetPose(alliance)));
+        controller.a().onTrue(drivetrain.resetToWall(Utilities.resetPose(alliance), alliance));
         controller.y().onTrue(flowerBar.toggle());
         new Trigger(() -> gamepad.guide).onTrue(turret.toggleLock());
         new Trigger(() -> gamepad.dpad_up).onTrue(Commands.instant(() -> ShotCalculator.adjustRpm(rpmStep)));
@@ -153,6 +174,8 @@ public class Robot implements NextRobot {
     @Override
     public void periodic() {
         updateShot();
+        Follower follower = drivetrain.getFollower();
+        if (savePose && follower != null) PoseHandoff.save(follower.pose(), alliance);
         logTelemetry();
     }
 

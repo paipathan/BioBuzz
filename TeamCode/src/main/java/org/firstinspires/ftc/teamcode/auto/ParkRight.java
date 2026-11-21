@@ -8,6 +8,7 @@ import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
 
 import org.firstinspires.ftc.teamcode.Robot;
+import org.firstinspires.ftc.teamcode.teleop.Tele;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Utilities;
 
@@ -25,7 +26,7 @@ public abstract class ParkRight extends NextOpMode {
         this.robot = robot;
         this.paths = new ParkRightPaths(alliance);
 
-        robot.initialize(paths.start, alliance);
+        robot.initializeAuto(paths.start, alliance);
     }
 
     private Command routine() {
@@ -42,14 +43,14 @@ public abstract class ParkRight extends NextOpMode {
     @Override
     public void start() { routine().schedule(); }
 
-    @NextAutonomous(name = "Park Right Red", preselectTeleop = "Red Teleop")
+    @NextAutonomous(name = "Park Right Red", preselectTeleop = Tele.RED)
     public static class ParkRightRed extends ParkRight {
         public ParkRightRed(Robot robot) {
             super(robot, Alliance.RED);
         }
     }
 
-    @NextAutonomous(name = "Park Right Blue", preselectTeleop = "Blue Teleop")
+    @NextAutonomous(name = "Park Right Blue", preselectTeleop = Tele.BLUE)
     public static class ParkRightBlue extends ParkRight {
         public ParkRightBlue(Robot robot) {
             super(robot, Alliance.BLUE);

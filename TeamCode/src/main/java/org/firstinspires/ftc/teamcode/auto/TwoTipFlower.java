@@ -14,6 +14,7 @@ import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
 
 import org.firstinspires.ftc.teamcode.Robot;
+import org.firstinspires.ftc.teamcode.teleop.Tele;
 import org.firstinspires.ftc.teamcode.subsystems.FlowerBar;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Utilities;
@@ -31,7 +32,7 @@ public abstract class TwoTipFlower extends NextOpMode {
         this.robot = robot;
         this.paths = new TwoTipPaths(alliance);
 
-        robot.initialize(paths.start, alliance);
+        robot.initializeAuto(paths.start, alliance);
     }
 
     private Command routine() {
@@ -69,14 +70,14 @@ public abstract class TwoTipFlower extends NextOpMode {
     @Override
     public void start() { routine().schedule(); }
 
-    @NextAutonomous(name = "Two Tip Red f", preselectTeleop = "Red Teleop")
+    @NextAutonomous(name = "Two Tip Red Flower", preselectTeleop = Tele.RED)
     public static class TwoTipRed extends TwoTipFlower {
         public TwoTipRed(Robot robot) {
             super(robot, Alliance.RED);
         }
     }
 
-    @NextAutonomous(name = "Two Tip Blue f", preselectTeleop = "Blue Teleop")
+    @NextAutonomous(name = "Two Tip Blue Flower", preselectTeleop = Tele.BLUE)
     public static class TwoTipBlue extends TwoTipFlower {
         public TwoTipBlue(Robot robot) {
             super(robot, Alliance.BLUE);
@@ -106,7 +107,7 @@ public abstract class TwoTipFlower extends NextOpMode {
             point1 = poseFactory.of(60, 24, 90);
             point2 = poseFactory.of(13.1, 47.8, 0);
             CollectDepot1Control1 = poseFactory.of(19.4, 20.1, 0);
-            point5 = poseFactory.of(58.5, 117, 270);
+            point5 = poseFactory.of(60, 119.8, 270);
             Shoot2Control1 = poseFactory.of(39, 35.4, 0);
             point7 = poseFactory.of(48.1, 123.2, 270);
             point8 = poseFactory.of(48.1, 130.7, 270);

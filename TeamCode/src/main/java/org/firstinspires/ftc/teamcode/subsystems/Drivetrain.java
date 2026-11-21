@@ -120,12 +120,25 @@ public class Drivetrain implements Mechanism {
         return Commands.instant(() -> headingOffset = -follower.pose().heading() - alliance.fieldCentricOffset);
     }
 
-    public Command resetPose(Pose pose) {
+    /**
+     * Snap to the wall reset pose and re-seed field centric so driver forward is the way the
+     * robot faces at the reset pose (same as {@link #resetFieldCentric} from that spot).
+     */
+    public Command resetToWall(Pose pose, Alliance alliance) {
         return Commands.instant(() -> {
-            follower.setPose(pose);
-            lastGoodPose = pose; // intentional jump, not a glitch
-            lastCheckNanos = System.nanoTime();
+            setPose(pose);
+            headingOffset = -pose.heading() - alliance.fieldCentricOffset;
         });
+    }
+
+    public Command resetPose(Pose pose) {
+        return Commands.instant(() -> setPose(pose));
+    }
+
+    private void setPose(Pose pose) {
+        follower.setPose(pose);
+        lastGoodPose = pose; // intentional jump, not a glitch
+        lastCheckNanos = System.nanoTime();
     }
 
     public Command setSpeed(double speed) {

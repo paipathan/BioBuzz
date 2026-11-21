@@ -40,9 +40,10 @@ public class Constants {
 
     public static class Drivetrain {
         public static final Pose startPose = new Pose(0, 0, 0);
-        // Drawn for red (degrees); Utilities.poseFactory mirrors it for blue.
-        public static final double resetX = 8.5;
-        public static final double resetY = 58.5;
+        // Drawn for red (degrees); Utilities.poseFactory mirrors it for blue
+        // (rotated 180 deg about field center -> blue = 135.3, 72, 180).
+        public static final double resetX = 8.7;
+        public static final double resetY = 72;
         public static final double resetHeadingDeg = 0;
 
         public static final double slowSpeed = 0.4;
@@ -179,9 +180,9 @@ public class Constants {
         public static final double bangZoneRpm = 100.0;
 
         // Fixed shot speed (dpad up/down nudges it 15 RPM at a time during a match).
-        public static final double shotRpm = 3000;
+        public static final double shotRpm = 3005;
         // Flywheel speed while the robot is idle.
-        public static final double idleRpm = 1500;
+        public static final double idleRpm = 2200;
     }
 
     public static class Auto {

@@ -8,6 +8,7 @@ import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
 
 import org.firstinspires.ftc.teamcode.Robot;
+import org.firstinspires.ftc.teamcode.teleop.Tele;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Utilities;
 
@@ -30,7 +31,7 @@ public abstract class TwoTip extends NextOpMode {
         this.robot = robot;
         this.paths = new TwoTipPaths(alliance);
 
-        robot.initialize(paths.start, alliance);
+        robot.initializeAuto(paths.start, alliance);
     }
 
     private Command routine() {
@@ -66,14 +67,14 @@ public abstract class TwoTip extends NextOpMode {
     @Override
     public void start() { routine().schedule(); }
 
-    @NextAutonomous(name = "Two Tip Red", preselectTeleop = "Red Teleop")
+    @NextAutonomous(name = "Two Tip Red", preselectTeleop = Tele.RED)
     public static class TwoTipRed extends TwoTip {
         public TwoTipRed(Robot robot) {
             super(robot, Alliance.RED);
         }
     }
 
-    @NextAutonomous(name = "Two Tip Blue", preselectTeleop = "Blue Teleop")
+    @NextAutonomous(name = "Two Tip Blue", preselectTeleop = Tele.BLUE)
     public static class TwoTipBlue extends TwoTip {
         public TwoTipBlue(Robot robot) {
             super(robot, Alliance.BLUE);

@@ -8,12 +8,14 @@ import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
 
 import org.firstinspires.ftc.teamcode.Robot;
+import org.firstinspires.ftc.teamcode.teleop.Tele;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Utilities;
 
 import dev.nextftc.robot.opmode.BulkReadHook;
 import dev.nextftc.robot.opmode.NextAutonomous;
 import dev.nextftc.robot.opmode.NextOpMode;
+import org.firstinspires.ftc.teamcode.subsystems.FlowerBar;
 
 public abstract class ParkLeft extends NextOpMode {
     private final Robot robot;
@@ -24,11 +26,13 @@ public abstract class ParkLeft extends NextOpMode {
         this.robot = robot;
         this.paths = new ParkLeftPaths(alliance);
 
-        robot.initialize(paths.start, alliance);
+        robot.initializeAuto(paths.start, alliance);
     }
 
     private Command routine() {
         return Groups.sequential(
+                robot.set(Robot.State.IDLE),
+                robot.flowerBar.set(FlowerBar.State.UP),
                 robot.drivetrain.follow(paths.path1())
         );
     }
@@ -39,14 +43,14 @@ public abstract class ParkLeft extends NextOpMode {
     @Override
     public void start() { routine().schedule(); }
 
-    @NextAutonomous(name = "Park Left Red", preselectTeleop = "Red Teleop")
+    @NextAutonomous(name = "Park Left Red", preselectTeleop = Tele.RED)
     public static class ParkLeftRed extends ParkLeft {
         public ParkLeftRed(Robot robot) {
             super(robot, Alliance.RED);
         }
     }
 
-    @NextAutonomous(name = "Park Left Blue", preselectTeleop = "Blue Teleop")
+    @NextAutonomous(name = "Park Left Blue", preselectTeleop = Tele.BLUE)
     public static class ParkLeftBlue extends ParkLeft {
         public ParkLeftBlue(Robot robot) {
             super(robot, Alliance.BLUE);

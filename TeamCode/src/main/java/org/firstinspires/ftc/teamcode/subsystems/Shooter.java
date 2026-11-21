@@ -15,7 +15,7 @@ import dev.nextftc.robot.Mechanism;
 
 public class Shooter implements Mechanism {
     public static final int SPIN_UP_TIMEOUT_MS = 750;
-    private static final double RPM_TOLERANCE = 50.0;
+    private static final double RPM_TOLERANCE = 10.0;
 
 
     public enum State {

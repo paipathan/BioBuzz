@@ -157,7 +157,7 @@ function autoSources(name) {
     points: [{ name: 'start', x: 71.25, y: 8, h: 90, vis: 'public' }],
     paths: [],
   }, '    ', true).join('\n');
-  const side = (suffix, alliance) => `    @NextAutonomous(name = "${display} ${suffix}", preselectTeleop = "${suffix} Teleop")
+  const side = (suffix, alliance) => `    @NextAutonomous(name = "${display} ${suffix}", preselectTeleop = Tele.${alliance})
     public static class ${name}${suffix} extends ${name} {
         public ${name}${suffix}(Robot robot) {
             super(robot, Alliance.${alliance});
@@ -173,6 +173,7 @@ import com.pedropathing.math.Pose;
 import com.pedropathing.paths.Path;
 
 import org.firstinspires.ftc.teamcode.Robot;
+import org.firstinspires.ftc.teamcode.teleop.Tele;
 import org.firstinspires.ftc.teamcode.util.Alliance;
 import org.firstinspires.ftc.teamcode.util.Utilities;
 
@@ -189,7 +190,7 @@ public abstract class ${name} extends NextOpMode {
         this.robot = robot;
         this.paths = new ${name}Paths(alliance);
 
-        robot.initialize(paths.start, alliance);
+        robot.initializeAuto(paths.start, alliance);
     }
 
     private Command routine() {
